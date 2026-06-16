@@ -1,0 +1,10 @@
+# scaffold-kernel — upstream reference
+# Этот файл отслеживает base commit из anomalyco/opencode
+upstream_repo: https://github.com/anomalyco/opencode
+upstream_commit: ab53d0619905496b351e4be37f14b727d58f21a3
+patched_at: 2026-06-16T10:36:12Z
+scaffold_patches:
+  - packages/opencode/src/cli/cmd/tui/i18n/ru.ts (Scaffold брендинг, 30+ строк)
+  - packages/opencode/src/installation/index.ts (URL обновлений)
+  - packages/opencode/package.json (name, description)
+  - .github/workflows/scaffold-release.yml (CI сборки)

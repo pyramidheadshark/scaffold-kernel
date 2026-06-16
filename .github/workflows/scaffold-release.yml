@@ -1,0 +1,110 @@
+name: Release scaffold-kernel
+
+on:
+  push:
+    tags:
+      - 'scaffold-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-latest
+            bun_target: bun-linux-x64
+            artifact: scaffold-linux-x64
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            bun_target: bun-linux-arm64
+            artifact: scaffold-linux-arm64
+          - target: darwin-x64
+            runner: macos-13
+            bun_target: bun-darwin-x64
+            artifact: scaffold-darwin-x64
+          - target: darwin-arm64
+            runner: macos-latest
+            bun_target: bun-darwin-arm64
+            artifact: scaffold-darwin-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: packages/opencode
+        run: bun install --frozen-lockfile
+
+      - name: Build binary
+        working-directory: packages/opencode
+        run: |
+          bun build src/index.ts \
+            --compile \
+            --target=${{ matrix.bun_target }} \
+            --outfile=../../dist/${{ matrix.artifact }}
+
+      - name: Verify binary
+        run: ./dist/${{ matrix.artifact }} --version
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#scaffold-}" >> $GITHUB_OUTPUT
+
+      - name: Create checksums
+        working-directory: dist/
+        run: |
+          for dir in */; do
+            sha256sum "$dir"* >> SHA256SUMS
+          done
+          cat SHA256SUMS
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Scaffold ${{ steps.version.outputs.version }}"
+          body: |
+            ## Scaffold Kernel ${{ steps.version.outputs.version }}
+
+            Scaffold-branded build of the kernel engine.
+
+            ### Installation
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install-scaffold-kernel.sh | bash
+            ```
+
+            ### Manual download
+            Pick the binary for your platform and place it at `.scaffold/runtime/scaffold-kernel/bin/scaffold`.
+
+            ### Upstream
+            Based on `anomalyco/opencode` — see UPSTREAM_REF for exact commit.
+          files: |
+            dist/*/*
+            dist/SHA256SUMS
+          draft: false
+          prerelease: false
