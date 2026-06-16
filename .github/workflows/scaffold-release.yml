@@ -46,10 +46,9 @@ jobs:
       - name: Build binary
         working-directory: packages/opencode
         run: |
-          bun build src/index.ts \
-            --compile \
-            --target=${{ matrix.bun_target }} \
-            --outfile=../../dist/${{ matrix.artifact }}
+          bun run script/ci-build.ts \
+            ${{ matrix.bun_target }} \
+            ../../dist/${{ matrix.artifact }}
 
       - name: Verify binary
         run: ./dist/${{ matrix.artifact }} --version
