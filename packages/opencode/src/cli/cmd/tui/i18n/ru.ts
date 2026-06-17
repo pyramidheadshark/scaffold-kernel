@@ -436,11 +436,11 @@ export const dict = {
   "tui.command.plugins.list.title": "Плагины",
   "tui.command.plugins.install.title": "Установить плагин",
 
-  // MiMo Auto (free) — TUI login dialog
-  "tui.dialog.login.mimo_free": "MiMo Auto (free)",
+  // Scaffold Auto (free) — TUI login dialog
+  "tui.dialog.login.mimo_free": "Scaffold Auto (free)",
   "tui.dialog.login.mimo_free.desc": "Анонимный бесплатный канал — вход не требуется",
-  "tui.dialog.login.mimo_free.success": "MiMo Auto (free) готов — модель по умолчанию: mimo/mimo-auto",
-  "tui.dialog.login.mimo_free.unavailable": "Провайдер MiMo Auto (free) не загружен",
+  "tui.dialog.login.mimo_free.success": "Scaffold Auto (free) готов — модель по умолчанию: mimo/mimo-auto",
+  "tui.dialog.login.mimo_free.unavailable": "Провайдер Scaffold Auto (free) не загружен",
   "tui.dialog.login.flow.title": "Вход в MiMo",
   "tui.dialog.login.flow.placeholder": "Вставьте код (или дождитесь обратного вызова браузера)",
   "tui.dialog.login.flow.busy": "Вход...",
@@ -454,9 +454,9 @@ export const dict = {
   "cli.providers.other": "Другой провайдер",
   "cli.providers.mimo.recommended_hint": "рекомендуется",
   "cli.providers.mimo_free.hint": "Анонимный бесплатный канал / mimo-auto",
-  "cli.providers.mimo_free.verifying": "Проверка канала MiMo Auto (free)...",
-  "cli.providers.mimo_free.ready": "Канал MiMo Auto (free) готов",
-  "cli.providers.mimo_free.failed": "Не удалось проверить MiMo Auto (free)",
+  "cli.providers.mimo_free.verifying": "Проверка канала Scaffold Auto (free)...",
+  "cli.providers.mimo_free.ready": "Канал Scaffold Auto (free) готов",
+  "cli.providers.mimo_free.failed": "Не удалось проверить Scaffold Auto (free)",
   "cli.providers.mimo_free.default_set": "Модель по умолчанию: mimo/mimo-auto (контекст 1M, бесплатно)",
   "cli.providers.mimo_free.usage_hint":
     "Вход не требуется — просто запустите mimo. Для платных/премиум-моделей выберите вход через браузер MiMo.",

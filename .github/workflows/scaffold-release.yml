@@ -31,6 +31,9 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Verify branding patches
+        run: bash scripts/verify-branding.sh
+
       - name: Install dependencies
         working-directory: packages/opencode
         run: bun install --frozen-lockfile
