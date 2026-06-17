@@ -23,14 +23,6 @@ jobs:
             runner: ubuntu-24.04-arm
             bun_target: bun-linux-arm64
             artifact: scaffold-linux-arm64
-          - target: darwin-x64
-            runner: macos-13
-            bun_target: bun-darwin-x64
-            artifact: scaffold-darwin-x64
-          - target: darwin-arm64
-            runner: macos-latest
-            bun_target: bun-darwin-arm64
-            artifact: scaffold-darwin-arm64
 
     steps:
       - uses: actions/checkout@v4
