@@ -577,6 +577,27 @@ export const layer = Layer.effect(
                   outcome,
                   cancelled ? { status: "cancelled" as const } : { status: "failure" as const, error },
                 )
+                // Notify postStop plugins on failure/cancellation (single pass, no ReAct loop).
+                // Allows plugins like scaffold-checkpoint to record terminal outcomes.
+                yield* plugin
+                  .triggerActorPostStop({
+                    sessionID: input.sessionID,
+                    parentSessionID: input.parentSessionID,
+                    actorID: input.actorID,
+                    parentActorID: input.parentActorID,
+                    agentType: input.agentType,
+                    mode: actorMode,
+                    lifecycle: input.lifecycle,
+                    finalText: undefined,
+                    task: input.task,
+                    description: input.description,
+                    task_id: input.task_id,
+                    outcome: cancelled ? "cancelled" : "failure",
+                    error: cancelled ? undefined : error,
+                    iteration: 0,
+                    canWrite,
+                  })
+                  .pipe(Effect.ignore)
                 yield* Effect.sync(() => forkContexts.delete(input.actorID))
               }),
           }),
