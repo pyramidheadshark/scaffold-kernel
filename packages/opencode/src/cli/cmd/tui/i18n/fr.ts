@@ -29,6 +29,11 @@ export const dict = {
   "tui.home.placeholder.example.todo": "Corriger un TODO dans le code",
   "tui.home.placeholder.example.stack": "Quelle est la stack technique de ce projet ?",
   "tui.home.placeholder.example.tests": "Réparer les tests cassés",
+  "tui.home.agreement.prefix": "En utilisant Scaffold, vous acceptez nos ",
+  "tui.home.agreement.terms": "Conditions d'utilisation",
+  "tui.home.agreement.separator": " et notre ",
+  "tui.home.agreement.privacy": "Politique de confidentialité",
+  "tui.home.agreement.suffix": "",
 
   // Prompt bottom hints (trigger characters)
   "tui.prompt.hint.attach_file": "joindre un fichier",
@@ -116,7 +121,7 @@ export const dict = {
   "tui.tips.mcp_config":
     "Configurez les serveurs MCP locaux ou distants dans la section {highlight}mcp{/highlight}",
   "tui.tips.mcp_oauth":
-    "MiMoCode gère automatiquement OAuth pour les serveurs MCP distants nécessitant une authentification",
+    "Scaffold gère automatiquement OAuth pour les serveurs MCP distants nécessitant une authentification",
   "tui.tips.custom_command":
     "Ajoutez des fichiers {highlight}.md{/highlight} dans {highlight}.mimocode/command/{/highlight} pour définir des invites personnalisées réutilisables",
   "tui.tips.command_args":
@@ -133,12 +138,12 @@ export const dict = {
     'Définissez {highlight}"rm -rf *": "deny"{/highlight} pour bloquer les commandes destructrices',
   "tui.tips.bash_ask":
     'Configurez {highlight}"git push": "ask"{/highlight} pour exiger une confirmation avant le push',
-  "tui.tips.formatter": "MiMoCode formate automatiquement les fichiers avec prettier, gofmt, ruff, etc.",
+  "tui.tips.formatter": "Scaffold formate automatiquement les fichiers avec prettier, gofmt, ruff, etc.",
   "tui.tips.disable_formatter":
     'Définissez {highlight}"formatter": false{/highlight} dans la config pour désactiver le formatage automatique',
   "tui.tips.custom_formatter":
     "Définissez des commandes de formatage personnalisées par extension de fichier dans la config",
-  "tui.tips.lsp": "MiMoCode utilise des serveurs LSP pour une analyse de code intelligente",
+  "tui.tips.lsp": "Scaffold utilise des serveurs LSP pour une analyse de code intelligente",
   "tui.tips.custom_tool":
     "Créez des fichiers {highlight}.ts{/highlight} dans {highlight}.mimocode/tools/{/highlight} pour définir de nouveaux outils LLM",
   "tui.tips.tool_scripts": "Les définitions d'outils peuvent invoquer des scripts en Python, Go, etc.",
@@ -147,14 +152,14 @@ export const dict = {
   "tui.tips.plugin_notify":
     "Utilisez des plugins pour envoyer des notifications système à la fin des sessions",
   "tui.tips.plugin_protect":
-    "Créez un plugin pour empêcher MiMoCode de lire des fichiers sensibles",
+    "Créez un plugin pour empêcher Scaffold de lire des fichiers sensibles",
   "tui.tips.run": "Utilisez {highlight}mimo run{/highlight} pour des scripts non interactifs",
   "tui.tips.continue": "Utilisez {highlight}mimo --continue{/highlight} pour reprendre la dernière session",
   "tui.tips.attach_cli":
     "Utilisez {highlight}mimo run -f file.ts{/highlight} pour joindre des fichiers via la CLI",
   "tui.tips.format_json":
     "Utilisez {highlight}--format json{/highlight} pour une sortie lisible par machine dans les scripts",
-  "tui.tips.serve": "Exécutez {highlight}mimo serve{/highlight} pour exposer l'API MiMoCode en mode headless",
+  "tui.tips.serve": "Exécutez scaffold serve pour exposer l'API Scaffold en mode headless",
   "tui.tips.attach_server":
     "Utilisez {highlight}mimo run --attach{/highlight} pour vous connecter à un serveur en cours",
   "tui.tips.upgrade": "Exécutez {highlight}mimo upgrade{/highlight} pour passer à la dernière version",
@@ -217,7 +222,7 @@ export const dict = {
   "tui.tips.docker":
     "Exécutez {highlight}docker run -it --rm ghcr.io/anomalyco/opencode{/highlight} pour une utilisation conteneurisée",
   "tui.tips.zen":
-    "Utilisez {highlight}/connect{/highlight} avec MiMo Code pour des modèles testés et sélectionnés",
+    "Utilisez {highlight}/connect{/highlight} avec Scaffold pour des modèles testés et sélectionnés",
   "tui.tips.agents_md":
     "Versionnez le fichier {highlight}AGENTS.md{/highlight} de votre projet sur Git pour le partager avec l'équipe",
   "tui.tips.review":
@@ -260,10 +265,10 @@ export const dict = {
   "tui.command.model.cycle_favorite_reverse.title": "Favoris (inverse)",
   "tui.command.agent.list.title": "Changer d'agent",
   "tui.command.mcp.list.title": "Activer/désactiver MCP",
-  "tui.command.never_ask.title_on": "Sans questions : ACTIVÉ — désactiver (me redemander)",
-  "tui.command.never_ask.title_off": "Sans questions : DÉSACTIVÉ — activer (décider sans demander)",
+  "tui.command.never_ask.title_on": "Sans questions : ACTIVÉ (auto-décider, autorisations exclues) — cliquer pour désactiver",
+  "tui.command.never_ask.title_off": "Sans questions : DÉSACTIVÉ — cliquer pour activer (auto-décider, autorisations exclues)",
   "tui.command.never_ask.toast_on":
-    "Sans questions ACTIVÉ — je ne te demanderai rien ; je choisirai moi-même la meilleure option jusqu'à ce que tu le désactives (/never-ask-questions). Les demandes d'autorisation nécessitent toujours ton approbation.",
+    "Sans questions ACTIVÉ — je ne te demanderai rien ; je choisirai moi-même la meilleure option jusqu'à ce que tu le désactives (/never-ask). Les demandes d'autorisation nécessitent toujours ton approbation.",
   "tui.command.never_ask.toast_off": "Sans questions DÉSACTIVÉ — je te redemanderai aux points de décision.",
   "tui.command.agent.cycle.title": "Cycle d'agents",
   "tui.command.variant.cycle.title": "Cycle de variantes",
@@ -292,6 +297,11 @@ export const dict = {
   "tui.dialog.ok": "OK",
   "tui.dialog.confirm.cancel": "Annuler",
   "tui.dialog.confirm.confirm": "Confirmer",
+  "tui.dialog.agreement.title": "Conditions et confidentialité",
+  "tui.dialog.agreement.message": "Veuillez les lire et les accepter pour continuer.",
+  "tui.dialog.agreement.confirm": "Accepter et continuer",
+  "tui.command.consent.revoke.title": "Révoquer l'accord du modèle gratuit",
+  "tui.consent.revoked": "Accord du modèle gratuit révoqué — vous devrez l'accepter à nouveau",
   "tui.dialog.select.placeholder": "Rechercher",
   "tui.dialog.select.no_results": "Aucun résultat trouvé",
   "tui.dialog.prompt.placeholder": "Saisir du texte",
@@ -312,6 +322,13 @@ export const dict = {
   "tui.dialog.export.hint.options_action": "pour les options",
   "tui.toast.copied_to_clipboard": "Copié dans le presse-papiers",
   "tui.toast.instructions_loaded": "Chargé {{files}}",
+  "tui.toast.update_available.title": "Mise à jour disponible",
+  "tui.toast.update_available.confirm": "La nouvelle version v{{version}} est disponible. Voulez-vous mettre à jour maintenant ?",
+  "tui.toast.update_available.updating": "Mise à jour vers v{{version}}...",
+  "tui.toast.update_available.failed": "La mise à jour a échoué",
+  "tui.toast.update_available.success": "Mis à jour vers Scaffold v{{version}}. Veuillez redémarrer l'application.",
+  "tui.toast.updated.title": "Mis à jour automatiquement",
+  "tui.toast.updated.message": "Correctif appliqué automatiquement : v{{version}}. Redémarrez pour utiliser la nouvelle version. Désactivez avec autoupdate: false dans la configuration.",
   "tui.sidebar.instructions": "Instructions",
   "tui.sidebar.cwd": "Répertoire de travail",
   "tui.toast.unknown_error": "Une erreur inconnue s'est produite",
@@ -407,20 +424,27 @@ export const dict = {
   "tui.command.plugins.list.title": "Plugins",
   "tui.command.plugins.install.title": "Installer un plugin",
 
-  // MiMo Auto (free) — TUI login dialog
-  "tui.dialog.login.mimo_free": "MiMo Auto (free)",
+  // Scaffold (choose provider) — TUI login dialog
+  "tui.dialog.login.mimo_free": "Scaffold (choose provider)",
   "tui.dialog.login.mimo_free.desc": "Canal anonyme gratuit — aucune connexion requise",
-  "tui.dialog.login.mimo_free.success": "MiMo Auto (free) est prêt — modèle par défaut défini sur mimo/mimo-auto",
-  "tui.dialog.login.mimo_free.unavailable": "Fournisseur MiMo Auto (free) non chargé",
+  "tui.dialog.login.mimo_free.success": "Scaffold (choose provider) est prêt — modèle par défaut défini sur mimo/mimo-auto",
+  "tui.dialog.login.mimo_free.unavailable": "Fournisseur Scaffold (choose provider) non chargé",
+  "tui.dialog.login.flow.title": "Connexion MiMo",
+  "tui.dialog.login.flow.placeholder": "Collez le code (ou attendez le rappel du navigateur)",
+  "tui.dialog.login.flow.busy": "Connexion en cours...",
+  "tui.dialog.login.flow.manual_hint": "Le navigateur ne s'est pas ouvert ? Cliquez sur le lien ci-dessous pour copier :",
+  "tui.dialog.login.flow.waiting": "En attente de l'autorisation du navigateur...",
+  "tui.dialog.login.flow.invalid_code": "Code invalide, veuillez réessayer",
+  "tui.dialog.login.flow.copied": "Copié",
 
   // CLI: providers command (auth login)
   "cli.providers.select": "Sélectionner un fournisseur",
   "cli.providers.other": "Autre fournisseur",
   "cli.providers.mimo.recommended_hint": "recommandé",
   "cli.providers.mimo_free.hint": "Canal anonyme gratuit / mimo-auto",
-  "cli.providers.mimo_free.verifying": "Vérification du canal MiMo Auto (free)...",
-  "cli.providers.mimo_free.ready": "Canal MiMo Auto (free) prêt",
-  "cli.providers.mimo_free.failed": "Échec de la vérification de MiMo Auto (free)",
+  "cli.providers.mimo_free.verifying": "Vérification du canal Scaffold (choose provider)...",
+  "cli.providers.mimo_free.ready": "Canal Scaffold (choose provider) prêt",
+  "cli.providers.mimo_free.failed": "Échec de la vérification de Scaffold (choose provider)",
   "cli.providers.mimo_free.default_set": "Modèle par défaut défini sur mimo/mimo-auto (contexte 1M, gratuit)",
   "cli.providers.mimo_free.usage_hint":
     "Aucune connexion requise — exécutez simplement mimo. Pour les modèles payants/premium, choisissez plutôt la connexion navigateur MiMo.",
@@ -437,4 +461,20 @@ export const dict = {
 
   // Session badges
   "tui.session.badge.auto": "Auto",
+
+  // Workspace trust
+  "trust.title": "Accès à l'espace de travail :",
+  "trust.safety_check": "Vérification rapide : est-ce un projet que vous avez créé ou auquel vous faites confiance ? (Votre propre code, un projet open source reconnu ou un travail de votre équipe). Sinon, prenez un moment pour examiner le contenu de ce dossier.",
+  "trust.capabilities": "Scaffold pourra lire, modifier et exécuter des fichiers ici.",
+  "trust.plugin_warn": "Si des plugins malveillants existent dans ce répertoire, ils peuvent exécuter du code arbitraire, lire, modifier ou exfiltrer vos fichiers.",
+  "trust.option.yes": "Oui, je fais confiance à ce dossier",
+  "trust.option.no": "Non, quitter",
+  "trust.dangerous.title_home": "ATTENTION : Vous êtes sur le point d'ouvrir votre RÉPERTOIRE PERSONNEL.",
+  "trust.dangerous.title_root": "ATTENTION : Vous êtes sur le point d'ouvrir la RACINE DU SYSTÈME DE FICHIERS.",
+  "trust.dangerous.body_home": "Le modèle aura accès à TOUS vos fichiers personnels — clés SSH, identifiants, profils de navigateur et tout le contenu de votre dossier personnel.",
+  "trust.dangerous.body_root": "Le modèle aura accès à l'ENSEMBLE du système de fichiers — fichiers système, données de tous les utilisateurs, identifiants et tout sur cette machine.",
+  "trust.dangerous.advice_home": "Sauf raison très spécifique, NE faites PAS confiance à l'intégralité de votre répertoire personnel.",
+  "trust.dangerous.advice_root": "Sauf raison très spécifique, NE faites PAS confiance à la racine du système de fichiers.",
+  "trust.dangerous.option.yes": "Je comprends les risques, faire confiance pour cette session",
+  "trust.dangerous.option.no": "Quitter (recommandé)",
 } satisfies Partial<Record<Keys, string>>

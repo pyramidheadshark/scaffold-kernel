@@ -29,6 +29,11 @@ export const dict = {
   "tui.home.placeholder.example.todo": "Corregir un TODO en el código",
   "tui.home.placeholder.example.stack": "¿Cuál es el stack técnico del proyecto?",
   "tui.home.placeholder.example.tests": "Arreglar las pruebas fallidas",
+  "tui.home.agreement.prefix": "Al usar Scaffold, aceptas nuestros ",
+  "tui.home.agreement.terms": "Términos de servicio",
+  "tui.home.agreement.separator": " y la ",
+  "tui.home.agreement.privacy": "Política de privacidad",
+  "tui.home.agreement.suffix": "",
 
   // Prompt bottom hints (trigger characters)
   "tui.prompt.hint.attach_file": "adjuntar archivo",
@@ -121,7 +126,7 @@ export const dict = {
   "tui.tips.mcp_config":
     "Configura servidores MCP locales o remotos en la sección {highlight}mcp{/highlight}",
   "tui.tips.mcp_oauth":
-    "MiMoCode gestiona automáticamente OAuth para servidores MCP remotos que requieran autenticación",
+    "Scaffold gestiona automáticamente OAuth para servidores MCP remotos que requieran autenticación",
   "tui.tips.custom_command":
     "Añade archivos {highlight}.md{/highlight} en {highlight}.mimocode/command/{/highlight} para definir indicaciones personalizadas reutilizables",
   "tui.tips.command_args":
@@ -138,12 +143,12 @@ export const dict = {
     'Define {highlight}"rm -rf *": "deny"{/highlight} para bloquear comandos destructivos',
   "tui.tips.bash_ask":
     'Configura {highlight}"git push": "ask"{/highlight} para exigir confirmación antes de hacer push',
-  "tui.tips.formatter": "MiMoCode formatea archivos automáticamente con prettier, gofmt, ruff y más",
+  "tui.tips.formatter": "Scaffold formatea archivos automáticamente con prettier, gofmt, ruff y más",
   "tui.tips.disable_formatter":
     'Define {highlight}"formatter": false{/highlight} en la config para desactivar el formato automático',
   "tui.tips.custom_formatter":
     "Define comandos de formateo personalizados por extensión de archivo en la configuración",
-  "tui.tips.lsp": "MiMoCode usa servidores LSP para análisis inteligente de código",
+  "tui.tips.lsp": "Scaffold usa servidores LSP para análisis inteligente de código",
   "tui.tips.custom_tool":
     "Crea archivos {highlight}.ts{/highlight} en {highlight}.mimocode/tools/{/highlight} para definir nuevas herramientas LLM",
   "tui.tips.tool_scripts":
@@ -153,7 +158,7 @@ export const dict = {
   "tui.tips.plugin_notify":
     "Usa plugins para enviar notificaciones del sistema cuando termine una sesión",
   "tui.tips.plugin_protect":
-    "Crea un plugin que impida a MiMoCode leer archivos sensibles",
+    "Crea un plugin que impida a Scaffold leer archivos sensibles",
   "tui.tips.run":
     "Usa {highlight}mimo run{/highlight} para scripting no interactivo",
   "tui.tips.continue":
@@ -163,7 +168,7 @@ export const dict = {
   "tui.tips.format_json":
     "Usa {highlight}--format json{/highlight} para obtener salida legible por máquina en scripts",
   "tui.tips.serve":
-    "Ejecuta {highlight}mimo serve{/highlight} para acceso headless a la API de MiMoCode",
+    "Ejecuta scaffold serve para acceso headless a la API de Scaffold",
   "tui.tips.attach_server":
     "Usa {highlight}mimo run --attach{/highlight} para conectarte a un servidor en ejecución",
   "tui.tips.upgrade":
@@ -227,7 +232,7 @@ export const dict = {
   "tui.tips.docker":
     "Ejecuta {highlight}docker run -it --rm ghcr.io/anomalyco/opencode{/highlight} para uso en contenedor",
   "tui.tips.zen":
-    "Usa {highlight}/connect{/highlight} con MiMo Code para modelos seleccionados y probados",
+    "Usa {highlight}/connect{/highlight} con Scaffold para modelos seleccionados y probados",
   "tui.tips.agents_md":
     "Sube el {highlight}AGENTS.md{/highlight} de tu proyecto a Git para compartirlo con el equipo",
   "tui.tips.review":
@@ -272,10 +277,10 @@ export const dict = {
   "tui.command.model.cycle_favorite_reverse.title": "Ciclo de favoritos (inverso)",
   "tui.command.agent.list.title": "Cambiar agente",
   "tui.command.mcp.list.title": "Alternar MCP",
-  "tui.command.never_ask.title_on": "Sin preguntas: ACTIVADO — desactivar (volver a preguntarme)",
-  "tui.command.never_ask.title_off": "Sin preguntas: DESACTIVADO — activar (decidir sin preguntar)",
+  "tui.command.never_ask.title_on": "Sin preguntas: ACTIVADO (auto-decidir, permisos excluidos) — clic para desactivar",
+  "tui.command.never_ask.title_off": "Sin preguntas: DESACTIVADO — clic para activar (auto-decidir, permisos excluidos)",
   "tui.command.never_ask.toast_on":
-    "Sin preguntas ACTIVADO — no te preguntaré; elegiré la mejor opción yo mismo hasta que lo desactives (/never-ask-questions). Las solicitudes de permiso siguen requiriendo tu aprobación.",
+    "Sin preguntas ACTIVADO — no te preguntaré; elegiré la mejor opción yo mismo hasta que lo desactives (/never-ask). Las solicitudes de permiso siguen requiriendo tu aprobación.",
   "tui.command.never_ask.toast_off": "Sin preguntas DESACTIVADO — volveré a preguntarte en los puntos de decisión.",
   "tui.command.agent.cycle.title": "Ciclo de agentes",
   "tui.command.variant.cycle.title": "Ciclo de variantes",
@@ -303,6 +308,11 @@ export const dict = {
   "tui.dialog.ok": "Aceptar",
   "tui.dialog.confirm.cancel": "Cancelar",
   "tui.dialog.confirm.confirm": "Confirmar",
+  "tui.dialog.agreement.title": "Términos y privacidad",
+  "tui.dialog.agreement.message": "Revísalos y acepta para continuar.",
+  "tui.dialog.agreement.confirm": "Aceptar y continuar",
+  "tui.command.consent.revoke.title": "Revocar el acuerdo de modelo gratuito",
+  "tui.consent.revoked": "Acuerdo de modelo gratuito revocado: se te pedirá aceptarlo de nuevo",
   "tui.dialog.select.placeholder": "Buscar",
   "tui.dialog.select.no_results": "No se encontraron resultados",
   "tui.dialog.prompt.placeholder": "Introduce texto",
@@ -323,6 +333,13 @@ export const dict = {
   "tui.dialog.export.hint.options_action": "para opciones",
   "tui.toast.copied_to_clipboard": "Copiado al portapapeles",
   "tui.toast.instructions_loaded": "Cargado {{files}}",
+  "tui.toast.update_available.title": "Actualización disponible",
+  "tui.toast.update_available.confirm": "La nueva versión v{{version}} está disponible. ¿Desea actualizar ahora?",
+  "tui.toast.update_available.updating": "Actualizando a v{{version}}...",
+  "tui.toast.update_available.failed": "La actualización falló",
+  "tui.toast.update_available.success": "Se actualizó a Scaffold v{{version}}. Por favor reinicie la aplicación.",
+  "tui.toast.updated.title": "Actualizado automáticamente",
+  "tui.toast.updated.message": "Parche aplicado automáticamente: v{{version}}. Reinicie para usar la nueva versión. Desactive con autoupdate: false en la configuración.",
   "tui.sidebar.instructions": "Instrucciones",
   "tui.sidebar.cwd": "Directorio de trabajo",
   "tui.toast.unknown_error": "Ha ocurrido un error desconocido",
@@ -430,4 +447,27 @@ export const dict = {
 
   // Session badges
   "tui.session.badge.auto": "Auto",
+
+  // Workspace trust
+  "trust.title": "Accediendo al espacio de trabajo:",
+  "trust.safety_check": "Verificación rápida: ¿Es este un proyecto que creaste o en el que confías? (Tu propio código, un proyecto open source conocido o trabajo de tu equipo). Si no, tómate un momento para revisar el contenido de esta carpeta.",
+  "trust.capabilities": "Scaffold podrá leer, editar y ejecutar archivos aquí.",
+  "trust.plugin_warn": "Si existen plugins maliciosos en este directorio, pueden ejecutar código arbitrario, leer, modificar o exfiltrar tus archivos.",
+  "trust.option.yes": "Sí, confío en esta carpeta",
+  "trust.option.no": "No, salir",
+  "trust.dangerous.title_home": "ADVERTENCIA: Estás a punto de abrir tu DIRECTORIO PERSONAL.",
+  "trust.dangerous.title_root": "ADVERTENCIA: Estás a punto de abrir la RAÍZ DEL SISTEMA DE ARCHIVOS.",
+  "trust.dangerous.body_home": "El modelo tendrá acceso a TODOS tus archivos personales — claves SSH, credenciales, perfiles del navegador y todo lo demás en tu carpeta personal.",
+  "trust.dangerous.body_root": "El modelo tendrá acceso a TODO el sistema de archivos — archivos del sistema, datos de todos los usuarios, credenciales y todo en esta máquina.",
+  "trust.dangerous.advice_home": "A menos que tengas una razón muy específica, NO confíes en todo tu directorio personal.",
+  "trust.dangerous.advice_root": "A menos que tengas una razón muy específica, NO confíes en la raíz del sistema de archivos.",
+  "trust.dangerous.option.yes": "Entiendo los riesgos, confiar solo esta sesión",
+  "trust.dangerous.option.no": "Salir (recomendado)",
+  "tui.dialog.login.flow.title": "Inicio de sesión MiMo",
+  "tui.dialog.login.flow.placeholder": "Pega el código (o espera la devolución del navegador)",
+  "tui.dialog.login.flow.busy": "Iniciando sesión...",
+  "tui.dialog.login.flow.manual_hint": "¿El navegador no se abrió? Haz clic en el enlace para copiar:",
+  "tui.dialog.login.flow.waiting": "Esperando autorización del navegador...",
+  "tui.dialog.login.flow.invalid_code": "Código inválido, intenta de nuevo",
+  "tui.dialog.login.flow.copied": "Copiado",
 } satisfies Partial<Record<Keys, string>>
