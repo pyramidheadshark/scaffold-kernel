@@ -9,6 +9,8 @@ import { DialogProvider as DialogProviderList } from "./dialog-provider"
 import { DialogSelect } from "@tui/ui/dialog-select"
 import { DialogPrompt } from "../ui/dialog-prompt"
 import { useToast } from "../ui/toast"
+import * as Clipboard from "@tui/util/clipboard"
+import { useRenderer } from "@opentui/solid"
 import os from "os"
 import path from "path"
 
@@ -25,42 +27,6 @@ export function DialogMimoLogin() {
       title={t("tui.dialog.login.title")}
       skipFilter
       options={[
-        {
-          title: t("tui.dialog.login.xiaomi"),
-          value: "xiaomi",
-          description: t("tui.dialog.login.xiaomi.desc"),
-          onSelect: async () => {
-            const result = await sdk.client.provider.oauth.authorize({
-              providerID: "xiaomi",
-              method: 0,
-            })
-            if (result.error) {
-              toast.show({ message: t("tui.dialog.login.start_failed"), variant: "error" })
-              dialog.clear()
-              return
-            }
-            dialog.replace(() => (
-              <MimoOAuthFlow url={result.data!.url} instructions={result.data!.instructions} />
-            ))
-          },
-        },
-        {
-          title: t("tui.dialog.login.mimo_free"),
-          value: "mimo-free",
-          description: t("tui.dialog.login.mimo_free.desc"),
-          onSelect: async () => {
-            await sync.bootstrap()
-            const mimo = sync.data.provider.find((p) => p.id === "mimo")
-            if (!mimo || !("mimo-auto" in mimo.models)) {
-              toast.show({ message: t("tui.dialog.login.mimo_free.unavailable"), variant: "error" })
-              dialog.clear()
-              return
-            }
-            local.model.set({ providerID: "mimo", modelID: "mimo-auto" }, { recent: true })
-            toast.show({ message: t("tui.dialog.login.mimo_free.success"), variant: "info" })
-            dialog.clear()
-          },
-        },
         {
           title: t("tui.dialog.login.import_claude"),
           value: "import_claude",
@@ -162,7 +128,18 @@ function MimoOAuthFlow(props: { url: string; instructions: string }) {
   const { theme } = useTheme()
   const { t } = useLanguage()
   const toast = useToast()
+  const renderer = useRenderer()
   const [busy, setBusy] = createSignal(false)
+  const [copied, setCopied] = createSignal(false)
+
+  function copyUrl() {
+    Clipboard.copy(props.url)
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+      .catch(toast.error)
+  }
 
   async function onLoginSuccess() {
     await sdk.client.instance.dispose()
@@ -193,8 +170,19 @@ function MimoOAuthFlow(props: { url: string; instructions: string }) {
       description={
         <box gap={1}>
           <Show when={props.url}>
-            <text fg={theme.textMuted}>{t("tui.dialog.login.flow.manual_hint")}</text>
-            <text fg={theme.primary}>{props.url}</text>
+            <text fg={theme.textMuted}>
+              {t("tui.dialog.login.flow.manual_hint")}
+              <Show when={copied()}>{" "}<span style={{ fg: theme.primary }}>({t("tui.dialog.login.flow.copied")})</span></Show>
+            </text>
+            <text
+              fg={theme.primary}
+              onMouseUp={() => {
+                if (renderer.getSelection()?.getSelectedText()) return
+                copyUrl()
+              }}
+            >
+              {props.url}
+            </text>
           </Show>
           <Show when={props.instructions}>
             <text fg={theme.textMuted}>{props.instructions}</text>

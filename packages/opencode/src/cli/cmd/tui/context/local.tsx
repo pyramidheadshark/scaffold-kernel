@@ -223,8 +223,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const value = currentModel()
           if (!value) {
             return {
-              provider: "Connect a provider",
-              model: "No provider selected",
+              provider: "Настройте провайдера",
+              model: "Модель не выбрана",
               reasoning: false,
             }
           }
@@ -232,7 +232,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const info = provider?.models[value.modelID]
           return {
             provider: provider?.name ?? value.providerID,
-            model: value.modelID === "mimo-auto" ? "MiMo Auto（MiMo-V2.5 限免中）" : (info?.name ?? value.modelID),
+            model: info?.name ?? value.modelID,
             reasoning: info?.capabilities?.reasoning ?? false,
           }
         }),
