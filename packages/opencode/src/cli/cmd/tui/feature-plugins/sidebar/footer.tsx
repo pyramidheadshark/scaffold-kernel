@@ -1,6 +1,7 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@mimo-ai/plugin/tui"
 import { createMemo, Show } from "solid-js"
 import { Global } from "@/global"
+import { InstallationVersion } from "@/installation/version"
 
 const id = "internal:sidebar-footer"
 
@@ -65,7 +66,7 @@ function View(props: { api: TuiPluginApi }) {
       </text>
       <text fg={theme().textMuted}>
         <span style={{ fg: theme().success }}>•</span> <b>Scaffold</b>{" "}
-        <span>{props.api.app.version ?? ""}</span>
+        <span>{InstallationVersion ?? ""}</span>
       </text>
     </box>
   )
@@ -88,4 +89,3 @@ const plugin: TuiPluginModule & { id: string } = {
 }
 
 export default plugin
-

@@ -949,11 +949,32 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     if (error && typeof error === "object" && error.name === "MessageAbortedError") return
     const message = errorMessage(error)
 
+    // C1 patch: auto-fill prompt for retryable API errors (service_unavailable, overloaded).
+    // The kernel has no internal HTTP retry for these — the session goes idle after the error.
+    // We detect isRetryable and pre-fill the prompt so the user only needs to press Enter.
+    // Delay 3s to let the user read the error toast before the prompt changes.
+    const isRetryable =
+      error &&
+      typeof error === "object" &&
+      (error as { name?: string; data?: { isRetryable?: boolean } }).name === "APIError" &&
+      (error as { data?: { isRetryable?: boolean } }).data?.isRetryable === true
+
     toast.show({
       variant: "error",
       message,
-      duration: 5000,
+      duration: isRetryable ? 4000 : 5000,
     })
+
+    if (isRetryable) {
+      setTimeout(() => {
+        promptRef.current?.set({ input: "Продолжи с того места где остановился.", parts: [] })
+        toast.show({
+          variant: "info",
+          message: "Провайдер перегружен. Prompt заполнен — нажми Enter чтобы продолжить.",
+          duration: 8000,
+        })
+      }, 3000)
+    }
   })
 
   event.on("installation.update-available", async (evt) => {
