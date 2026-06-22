@@ -65,7 +65,7 @@ function View(props: { api: TuiPluginApi }) {
       </text>
       <text fg={theme().textMuted}>
         <span style={{ fg: theme().success }}>•</span> <b>Scaffold</b>{" "}
-        <span>{props.api.app.version}</span>
+        <span>{props.api.app.version ?? ""}</span>
       </text>
     </box>
   )
@@ -88,3 +88,4 @@ const plugin: TuiPluginModule & { id: string } = {
 }
 
 export default plugin
+
