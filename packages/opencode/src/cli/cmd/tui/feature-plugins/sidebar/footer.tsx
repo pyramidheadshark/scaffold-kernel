@@ -66,7 +66,7 @@ function View(props: { api: TuiPluginApi }) {
       </text>
       <text fg={theme().textMuted}>
         <span style={{ fg: theme().success }}>•</span> <b>Scaffold</b>{" "}
-        <span>{InstallationVersion ?? ""}</span>
+        <span>{(process.env.SCAFFOLD_CLI_VERSION ? `v${process.env.SCAFFOLD_CLI_VERSION}` : null) ?? InstallationVersion ?? ""}</span>
       </text>
     </box>
   )
