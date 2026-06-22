@@ -949,15 +949,19 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     if (error && typeof error === "object" && error.name === "MessageAbortedError") return
     const message = errorMessage(error)
 
-    // C1 patch: auto-fill prompt for retryable API errors (service_unavailable, overloaded).
-    // The kernel has no internal HTTP retry for these — the session goes idle after the error.
-    // We detect isRetryable and pre-fill the prompt so the user only needs to press Enter.
-    // Delay 3s to let the user read the error toast before the prompt changes.
-    const isRetryable =
-      error &&
-      typeof error === "object" &&
-      (error as { name?: string; data?: { isRetryable?: boolean } }).name === "APIError" &&
-      (error as { data?: { isRetryable?: boolean } }).data?.isRetryable === true
+    // C1 patch: auto-fill prompt for retryable API errors (service_unavailable, overloaded, server_error).
+    // Codex streaming errors arrive as {type:"server_error",code:"server_error",...} — no name/isRetryable.
+    // We check all known shapes: APIError+data.isRetryable, name/type/code matching, nested data.code.
+    const isRetryable = (() => {
+      if (!error || typeof error !== "object") return false
+      const e = error as Record<string, unknown>
+      const data = e.data as Record<string, unknown> | undefined
+      if (data?.isRetryable === true) return true
+      const retryNames = ["service_unavailable_error", "server_error", "overloaded_error"]
+      return retryNames.some(
+        (n) => e.name === n || e.type === n || e.code === n || data?.code === n,
+      )
+    })()
 
     toast.show({
       variant: "error",
