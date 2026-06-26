@@ -10,7 +10,7 @@ import { zod } from "@/util/effect-zod"
 import { Log } from "@/util"
 import { withStatics } from "@/util/schema"
 import { Wildcard } from "@/util"
-import { Deferred, Effect, Layer, Schema, Context } from "effect"
+import { Effect, Layer, Schema, Context } from "effect"
 import os from "os"
 import { evaluate as evalRule } from "./evaluate"
 import { PermissionID } from "./schema"
@@ -140,7 +140,9 @@ export interface Interface {
 
 interface PendingEntry {
   info: Request
-  deferred: Deferred.Deferred<void, RejectedError | CorrectedError>
+  // Direct resume callback — stored so reply() can wake the waiting fiber across
+  // Effect runtime boundaries (Deferred.fail() does not work cross-runtime, PI-103).
+  resolve: (eff: Effect.Effect<void, RejectedError | CorrectedError>) => void
 }
 
 interface State {
@@ -170,9 +172,9 @@ export const layer = Layer.effect(
         }
 
         yield* Effect.addFinalizer(() =>
-          Effect.gen(function* () {
+          Effect.sync(() => {
             for (const item of state.pending.values()) {
-              yield* Deferred.fail(item.deferred, new RejectedError())
+              item.resolve(Effect.fail(new RejectedError()))
             }
             state.pending.clear()
           }),
@@ -218,41 +220,35 @@ export const layer = Layer.effect(
       })
       log.info("asking", { id, permission: info.permission, patterns: info.patterns })
 
-      const deferred = yield* Deferred.make<void, RejectedError | CorrectedError>()
-      pending.set(id, { info, deferred })
+      // Store a placeholder resolve; Effect.callback will overwrite it synchronously
+      // before any reply() can arrive (UI interaction is always async).
+      pending.set(id, { info, resolve: () => {} })
       yield* bus.publish(Event.Asked, info)
 
-      // Spec ③ P3: race against caller's abortSignal so a stranded ask
-      // doesn't block forever when the surrounding scope is interrupted.
-      // NOTE: Effect.callback (not Effect.promise) — when Deferred.await
-      // wins the race, Effect.race interrupts the callback and runs the
-      // cleanup returned from the body, which removes the addEventListener.
-      // Effect.promise has no such hook: listener leaks for the lifetime
-      // of the AbortSignal + unhandled-rejection when the eventual abort
-      // tries to reject the already-dead Promise.
-      const deferredAwait = Deferred.await(deferred)
-      const main = abortSignal
-        ? Effect.race(
-            deferredAwait,
-            Effect.callback<never, RejectedError>((resume) => {
-              const onAbort = () => {
-                Effect.runPromise(Deferred.fail(deferred, new RejectedError())).catch(() => {})
-                resume(Effect.fail(new RejectedError()))
-              }
-              if (abortSignal.aborted) {
-                onAbort()
-                return
-              }
-              abortSignal.addEventListener("abort", onAbort, { once: true })
-              return Effect.sync(() => {
-                abortSignal.removeEventListener("abort", onAbort)
-              })
-            }),
-          )
-        : deferredAwait
-
+      // PI-103: Use Effect.callback so the resume function is stored directly in the
+      // pending entry. reply() calls entry.resolve() which wakes this fiber across
+      // runtime boundaries — unlike Deferred.fail(), which does not reliably wake
+      // a Deferred.await() fiber living in a different Effect.runPromise() context
+      // (Effect v4 cross-runtime scheduler isolation). Effect.callback's resume works
+      // from any async context, matching how the abort path (ESC×2) already works.
       return yield* Effect.ensuring(
-        main,
+        Effect.callback<void, RejectedError | CorrectedError>((resume) => {
+          // Update in-place — synchronous, before any reply() can fire
+          const entry = pending.get(id)
+          if (entry) entry.resolve = resume
+
+          if (abortSignal) {
+            const onAbort = () => resume(Effect.fail(new RejectedError()))
+            if (abortSignal.aborted) {
+              onAbort()
+              return
+            }
+            abortSignal.addEventListener("abort", onAbort, { once: true })
+            return Effect.sync(() => {
+              abortSignal.removeEventListener("abort", onAbort)
+            })
+          }
+        }),
         Effect.sync(() => {
           pending.delete(id)
         }),
@@ -272,9 +268,8 @@ export const layer = Layer.effect(
       })
 
       if (input.reply === "reject") {
-        yield* Deferred.fail(
-          existing.deferred,
-          input.message ? new CorrectedError({ feedback: input.message }) : new RejectedError(),
+        existing.resolve(
+          Effect.fail(input.message ? new CorrectedError({ feedback: input.message }) : new RejectedError()),
         )
 
         for (const [id, item] of pending.entries()) {
@@ -285,12 +280,12 @@ export const layer = Layer.effect(
             requestID: item.info.id,
             reply: "reject",
           })
-          yield* Deferred.fail(item.deferred, new RejectedError())
+          item.resolve(Effect.fail(new RejectedError()))
         }
         return
       }
 
-      yield* Deferred.succeed(existing.deferred, undefined)
+      existing.resolve(Effect.succeed(undefined))
       if (input.reply === "once") return
 
       for (const pattern of existing.info.always) {
@@ -313,7 +308,7 @@ export const layer = Layer.effect(
           requestID: item.info.id,
           reply: "always",
         })
-        yield* Deferred.succeed(item.deferred, undefined)
+        item.resolve(Effect.succeed(undefined))
       }
     })
 
