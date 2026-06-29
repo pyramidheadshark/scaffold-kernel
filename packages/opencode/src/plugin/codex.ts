@@ -374,6 +374,10 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
           "gpt-5.3-codex",
           "gpt-5.4",
           "gpt-5.4-mini",
+          // Scaffold (PI-67/v0.1.19): gpt-5.5 есть в bundled-каталоге openai, но без этой строки
+          // loader прунит её при codex-OAuth → ProviderModelNotFoundError. Бэкенд подписки её отдаёт
+          // (probe HTTP 200, 2026-06-29). Добавление разблокирует openai/gpt-5.5 как флагман.
+          "gpt-5.5",
         ])
         for (const [modelId, model] of Object.entries(provider.models)) {
           if (modelId.includes("codex")) continue
