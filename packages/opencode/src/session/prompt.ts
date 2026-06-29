@@ -2131,6 +2131,22 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           })
         })
 
+        // scaffold PRIME-3: auto-arm the Outcome Gate goal for the main agent.
+        // Without this the `goal` tool must be called explicitly; prime forgets and
+        // enforcement is silently absent. When experimental.autoGoalCondition is
+        // configured (scaffold writes it only for hub sessions) and no goal is
+        // already active, arm it once per runLoop entry — i.e. once per user turn.
+        // Guard `!goal.get` so an in-flight ReAct re-entry (goalGate returned true,
+        // goal still set) and a user `/goal` override both take precedence. goalGate
+        // keeps its fail-open semantics, so this can never trap the user.
+        if ((agentID ?? "main") === "main") {
+          const autoGoalCondition = (yield* config.get()).experimental?.autoGoalCondition
+          if (autoGoalCondition && !(yield* goal.get(sessionID))) {
+            yield* goal.set(sessionID, autoGoalCondition)
+            yield* slog.info("auto-armed outcome gate goal", { sessionID })
+          }
+        }
+
         while (true) {
           // F55: only main agent sets session status to busy; subagent runners
           // must not touch session-level status (Runner.onBusy is Effect.void
