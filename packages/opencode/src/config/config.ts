@@ -604,6 +604,7 @@ export const layer = Layer.effect(
       const gitignore = path.join(dir, ".gitignore")
       const hasIgnore = yield* fs.existsSafe(gitignore)
       if (!hasIgnore) {
+        yield* Effect.promise(() => fsNode.mkdir(dir, { recursive: true }))
         yield* fs
           .writeFileString(
             gitignore,

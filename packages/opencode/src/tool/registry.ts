@@ -183,12 +183,19 @@ export const layer = Layer.effect(
         const matches = dirs.flatMap((dir) =>
           Glob.scanSync("{tool,tools}/*.{js,ts}", { cwd: dir, absolute: true, dot: true, symlink: true }),
         )
-        if (matches.length) yield* config.waitForDependencies()
         for (const match of matches) {
           const namespace = path.basename(match, path.extname(match))
           // `match` is an absolute filesystem path from `Glob.scanSync(..., { absolute: true })`.
           // Import it as `file://` so Node on Windows accepts the dynamic import.
-          const mod = yield* Effect.promise(() => import(pathToFileURL(match).href))
+          const specifier = pathToFileURL(match).href
+          const mod = yield* Effect.promise(() => import(specifier)).pipe(
+            Effect.catch((error) =>
+              Effect.gen(function* () {
+                yield* config.waitForDependencies()
+                return yield* Effect.promise(() => import(specifier))
+              }).pipe(Effect.catch(() => Effect.fail(error))),
+            ),
+          )
           for (const [id, def] of Object.entries<ToolDefinition>(mod)) {
             custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def))
           }

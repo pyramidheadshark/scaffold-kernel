@@ -85,6 +85,13 @@ delete process.env["SAMBANOVA_API_KEY"]
 delete process.env["MIMOCODE_SERVER_PASSWORD"]
 delete process.env["MIMOCODE_SERVER_USERNAME"]
 delete process.env["MIMOCODE_HOME"]
+delete process.env["MIMOCODE_CONFIG"]
+delete process.env["MIMOCODE_CONFIG_DIR"]
+delete process.env["MIMOCODE_CONFIG_CONTENT"]
+delete process.env["MIMOCODE_PERMISSION"]
+delete process.env["MIMOCODE_DISABLE_PROJECT_CONFIG"]
+delete process.env["MIMOCODE_DISABLE_AUTOCOMPACT"]
+delete process.env["MIMOCODE_DISABLE_PRUNE"]
 
 // Use in-memory sqlite
 process.env["MIMOCODE_DB"] = ":memory:"
