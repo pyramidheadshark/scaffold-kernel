@@ -206,10 +206,10 @@ export const layer: Layer.Layer<
     })
 
     const impl = Service.of({ send, drain })
-    inboxServiceRef.current = impl
+    const inboxServiceToken = inboxServiceRef.install(impl)
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
-        if (inboxServiceRef.current === impl) inboxServiceRef.current = undefined
+        inboxServiceRef.release(inboxServiceToken)
       }),
     )
     return impl

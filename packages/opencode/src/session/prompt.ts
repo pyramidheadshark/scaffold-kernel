@@ -254,10 +254,10 @@ export const layer = Layer.effect(
         )
         return { ...prefix, parentPermission: ag.permission }
       })
-    prefixCaptureRef.current = capture
+    const prefixCaptureToken = prefixCaptureRef.install(capture)
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
-        if (prefixCaptureRef.current === capture) prefixCaptureRef.current = undefined
+        prefixCaptureRef.release(prefixCaptureToken)
       }),
     )
 
@@ -3200,10 +3200,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       sweepOrphanAssistants,
       predict,
     })
-    sessionPromptRef.current = { loop: impl.loop }
+    const sessionPromptToken = sessionPromptRef.install({ loop: impl.loop })
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
-        if (sessionPromptRef.current?.loop === impl.loop) sessionPromptRef.current = undefined
+        sessionPromptRef.release(sessionPromptToken)
       }),
     )
     return impl

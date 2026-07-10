@@ -1,4 +1,4 @@
-import { afterEach, describe, expect } from "bun:test"
+import { afterEach, beforeEach, describe, expect } from "bun:test"
 import { Effect, Layer } from "effect"
 import { Database } from "../../src/storage"
 import { HistoryFtsTable } from "../../src/history/fts.sql"
@@ -11,7 +11,7 @@ import { provideTmpdirInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import * as CrossSpawnSpawner from "../../src/effect/cross-spawn-spawner"
 
-afterEach(async () => {
+function resetHistoryTables() {
   Database.use((db) => {
     db.delete(HistoryFtsTable).run()
     db.delete(PartTable).run()
@@ -19,6 +19,14 @@ afterEach(async () => {
     db.delete(SessionTable).run()
     db.delete(ProjectTable).run()
   })
+}
+
+beforeEach(() => {
+  resetHistoryTables()
+})
+
+afterEach(async () => {
+  resetHistoryTables()
   await Instance.disposeAll()
 })
 

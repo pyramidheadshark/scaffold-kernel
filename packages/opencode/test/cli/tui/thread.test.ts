@@ -9,6 +9,15 @@ import * as Timeout from "../../../src/util/timeout"
 import * as Network from "../../../src/cli/network"
 import * as Win32 from "../../../src/cli/cmd/tui/win32"
 import { TuiConfig } from "../../../src/cli/cmd/tui/config/tui"
+import type { PromptInfo } from "../../../src/cli/cmd/tui/component/prompt/history"
+import { assign, strip } from "../../../src/cli/cmd/tui/component/prompt/part"
+import {
+  DEFAULT_THEMES,
+  allThemes,
+  addTheme,
+  hasTheme,
+  resolveTheme,
+} from "../../../src/cli/cmd/tui/context/theme"
 
 const stop = new Error("stop")
 const seen = {
@@ -117,5 +126,91 @@ describe("tui thread", () => {
 
   test("uses the real cwd after resolving a relative project from PWD", async () => {
     await check(".")
+  })
+
+  test("prompt part strip removes persisted ids from reused file parts", () => {
+    const part = {
+      id: "prt_old",
+      sessionID: "ses_old",
+      messageID: "msg_old",
+      type: "file" as const,
+      mime: "image/png",
+      filename: "tiny.png",
+      url: "data:image/png;base64,abc",
+    }
+
+    expect(strip(part)).toEqual({
+      type: "file",
+      mime: "image/png",
+      filename: "tiny.png",
+      url: "data:image/png;base64,abc",
+    })
+  })
+
+  test("prompt part assign overwrites stale runtime ids", () => {
+    const part = {
+      id: "prt_old",
+      sessionID: "ses_old",
+      messageID: "msg_old",
+      type: "file" as const,
+      mime: "image/png",
+      filename: "tiny.png",
+      url: "data:image/png;base64,abc",
+    } as PromptInfo["parts"][number]
+
+    const next = assign(part)
+
+    expect(next.id).not.toBe("prt_old")
+    expect(next.id.startsWith("prt_")).toBe(true)
+    expect(next).toMatchObject({
+      type: "file",
+      mime: "image/png",
+      filename: "tiny.png",
+      url: "data:image/png;base64,abc",
+    })
+  })
+
+  test("theme store addTheme writes into module store", () => {
+    const name = `plugin-theme-${Date.now()}`
+    expect(addTheme(name, DEFAULT_THEMES.mimocode)).toBe(true)
+    expect(allThemes()[name]).toBeDefined()
+  })
+
+  test("theme store keeps first theme for duplicate names", () => {
+    const name = `plugin-theme-keep-${Date.now()}`
+    const one = structuredClone(DEFAULT_THEMES.mimocode)
+    const two = structuredClone(DEFAULT_THEMES.mimocode)
+    one.theme.primary = "#101010"
+    two.theme.primary = "#fefefe"
+
+    expect(addTheme(name, one)).toBe(true)
+    expect(addTheme(name, two)).toBe(false)
+    expect(allThemes()[name]).toBeDefined()
+    expect(allThemes()[name]!.theme.primary).toBe("#101010")
+  })
+
+  test("theme store ignores entries without a theme object", () => {
+    const name = `plugin-theme-invalid-${Date.now()}`
+    expect(addTheme(name, { defs: { a: "#ffffff" } })).toBe(false)
+    expect(allThemes()[name]).toBeUndefined()
+  })
+
+  test("theme store hasTheme checks theme presence", () => {
+    const name = `plugin-theme-has-${Date.now()}`
+    expect(hasTheme(name)).toBe(false)
+    expect(addTheme(name, DEFAULT_THEMES.mimocode)).toBe(true)
+    expect(hasTheme(name)).toBe(true)
+  })
+
+  test("theme store resolveTheme rejects circular color refs", () => {
+    const item = structuredClone(DEFAULT_THEMES.mimocode)
+    item.defs = {
+      ...item.defs,
+      one: "two",
+      two: "one",
+    }
+    item.theme.primary = "one"
+
+    expect(() => resolveTheme(item, "dark")).toThrow("Circular color reference")
   })
 })

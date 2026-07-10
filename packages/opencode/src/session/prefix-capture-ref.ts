@@ -17,6 +17,7 @@ import type { Effect } from "effect"
 import type { SessionID } from "./schema"
 import type { ModelMessage, Tool as AITool } from "ai"
 import type { Permission } from "../permission"
+import { createLateBoundRef } from "@/util/late-bound-ref"
 
 export interface PrefixCaptureResult {
   readonly system: string[]
@@ -45,4 +46,4 @@ export type PrefixCaptureFn = (input: {
   msgs: unknown[]
 }) => Effect.Effect<PrefixCaptureResult, never>
 
-export const prefixCaptureRef: { current: PrefixCaptureFn | undefined } = { current: undefined }
+export const prefixCaptureRef = createLateBoundRef<PrefixCaptureFn>()

@@ -5,6 +5,7 @@ import {
   loadExternalWorkflowSnapshot,
   parseExternalWorkflowSnapshot,
 } from "../../src/workflow/external-workflow-state"
+import { mergeExternalWorkflowStatus, resolveWorkflowStateFile } from "../../src/workflow/runtime"
 
 describe("external workflow snapshot contract", () => {
   test("parses a valid generic workflow snapshot", () => {
@@ -100,5 +101,47 @@ describe("loadExternalWorkflowSnapshot", () => {
     )
     const result = await loadExternalWorkflowSnapshot(file)
     expect(result).toBeUndefined()
+  })
+})
+
+describe("resolveWorkflowStateFile", () => {
+  test("prefers the per-run workflow state file over env fallback", () => {
+    expect(resolveWorkflowStateFile("/tmp/run.json", "/tmp/env.json")).toBe("/tmp/run.json")
+  })
+
+  test("falls back to env when the run does not provide a file", () => {
+    expect(resolveWorkflowStateFile(undefined, "/tmp/env.json")).toBe("/tmp/env.json")
+  })
+})
+
+describe("mergeExternalWorkflowStatus", () => {
+  test("lets a valid external snapshot override currentPhase and enrich status", () => {
+    const merged = mergeExternalWorkflowStatus(
+      { status: "completed", agentCount: 0, currentPhase: "internal-phase" },
+      {
+        version: 1,
+        source: "external-provider",
+        currentPhase: "external-phase",
+        topLevelStep: "External step",
+        blocking: true,
+        blockingGates: ["G5"],
+        nextAction: { title: "Unblock", reason: "Need implementation" },
+        readinessVerdict: "blocked",
+      },
+    )
+    expect(merged.currentPhase).toBe("external-phase")
+    expect(merged.topLevelStep).toBe("External step")
+    expect(merged.blocking).toBe(true)
+    expect(merged.blockingGates).toEqual(["G5"])
+    expect(merged.nextAction).toEqual({ title: "Unblock", reason: "Need implementation" })
+    expect(merged.readinessVerdict).toBe("blocked")
+    expect(merged.workflowSource).toBe("external-provider")
+  })
+
+  test("keeps internal currentPhase when external snapshot is absent", () => {
+    const merged = mergeExternalWorkflowStatus({ status: "completed", agentCount: 0, currentPhase: "internal-phase" })
+    expect(merged.currentPhase).toBe("internal-phase")
+    expect(merged.workflowSource).toBeUndefined()
+    expect(merged.topLevelStep).toBeUndefined()
   })
 })

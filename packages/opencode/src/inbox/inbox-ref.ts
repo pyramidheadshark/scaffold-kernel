@@ -14,14 +14,13 @@ import type { Effect } from "effect"
 import type { SessionID } from "@/session/schema"
 import type { MessageV2 } from "@/session/message-v2"
 import type { Interface as InboxInterface } from "./inbox"
+import { createLateBoundRef } from "@/util/late-bound-ref"
 
 export interface SessionPromptLoopRef {
   loop: (input: { sessionID: SessionID; agentID: string }) => Effect.Effect<MessageV2.WithParts>
 }
 
-export const sessionPromptRef: { current: SessionPromptLoopRef | undefined } = {
-  current: undefined,
-}
+export const sessionPromptRef = createLateBoundRef<SessionPromptLoopRef>()
 
 // Late-bound reference to Inbox.Service.
 //
@@ -33,6 +32,4 @@ export const sessionPromptRef: { current: SessionPromptLoopRef | undefined } = {
 //
 // Inbox.layer populates `current` at initialisation. A missing `current`
 // means the inbox service hasn't been wired (e.g. minimal test fixtures).
-export const inboxServiceRef: { current: InboxInterface | undefined } = {
-  current: undefined,
-}
+export const inboxServiceRef = createLateBoundRef<InboxInterface>()

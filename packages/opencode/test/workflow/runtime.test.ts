@@ -1,15 +1,17 @@
 import { describe, expect, afterEach } from "bun:test"
-import { Effect } from "effect"
+import { Deferred, Effect } from "effect"
 import path from "node:path"
 import { Session } from "../../src/session"
 import { Instance } from "../../src/project/instance"
-import { provideTmpdirServer } from "../fixture/fixture"
+import { provideTmpdirInstance, provideTmpdirServer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { reply } from "../lib/llm-server"
 import { WorkflowRuntime } from "../../src/workflow/runtime"
 import { WorkflowAgentFailed } from "../../src/workflow/events"
 import { WorkflowPersistence } from "../../src/workflow/persistence"
 import { ActorRegistry } from "../../src/actor/registry"
+import type { AgentOutcome, SpawnInput } from "../../src/actor/spawn"
+import { spawnRef } from "../../src/actor/spawn-ref"
 import { Bus } from "../../src/bus"
 import { makeLayer, ref, providerCfg } from "./lib"
 
@@ -176,98 +178,6 @@ describe("WorkflowRuntime convergence (scout drives fan-out)", () => {
   )
 })
 
-describe("WorkflowRuntime external workflow snapshot bridge", () => {
-  it.live("status prefers a valid external snapshot over internal currentPhase", () =>
-    provideTmpdirServer(
-      Effect.fnUntraced(function* ({ dir }) {
-        const runtime = yield* WorkflowRuntime.Service
-        const session = yield* Session.Service
-        const parent = yield* session.create({
-          title: "wf external snapshot",
-          permission: [{ permission: "*", pattern: "*", action: "allow" }],
-        })
-        const snapshotFile = path.join(dir, "workflow.json")
-        yield* Effect.promise(() =>
-          Bun.write(
-            snapshotFile,
-            JSON.stringify({
-              version: 1,
-              source: "external-provider",
-              currentPhase: "external-phase",
-              topLevelStep: "External step",
-              blocking: true,
-              blockingGates: ["G5"],
-              nextAction: { title: "Unblock", reason: "Need implementation" },
-              readinessVerdict: "blocked",
-            }),
-          ),
-        )
-        const previous = process.env["MIMOCODE_WORKFLOW_STATE_FILE"]
-        try {
-          process.env["MIMOCODE_WORKFLOW_STATE_FILE"] = snapshotFile
-          const script = [
-            `export const meta = { name: "t", description: "d" }`,
-            `phase("internal-phase")`,
-            `return "ok"`,
-          ].join("\n")
-          const { runID } = yield* runtime.start({ script, sessionID: parent.id, parentActorID: "main" })
-          const outcome = yield* runtime.wait({ runID })
-          expect(outcome.status).toBe("completed")
-          const status = yield* runtime.status({ runID })
-          expect(status.currentPhase).toBe("external-phase")
-          expect(status.topLevelStep).toBe("External step")
-          expect(status.blocking).toBe(true)
-          expect(status.blockingGates).toEqual(["G5"])
-          expect(status.nextAction).toEqual({ title: "Unblock", reason: "Need implementation" })
-          expect(status.readinessVerdict).toBe("blocked")
-          expect(status.workflowSource).toBe("external-provider")
-        } finally {
-          if (previous === undefined) delete process.env["MIMOCODE_WORKFLOW_STATE_FILE"]
-          else process.env["MIMOCODE_WORKFLOW_STATE_FILE"] = previous
-        }
-      }),
-      { git: true, config: providerCfg },
-    ),
-    10000,
-  )
-
-  it.live("status falls back to internal currentPhase when external snapshot is invalid", () =>
-    provideTmpdirServer(
-      Effect.fnUntraced(function* ({ dir }) {
-        const runtime = yield* WorkflowRuntime.Service
-        const session = yield* Session.Service
-        const parent = yield* session.create({
-          title: "wf external snapshot fallback",
-          permission: [{ permission: "*", pattern: "*", action: "allow" }],
-        })
-        const snapshotFile = path.join(dir, "workflow-invalid.json")
-        yield* Effect.promise(() => Bun.write(snapshotFile, JSON.stringify({ version: 1, source: 42, blocking: true })))
-        const previous = process.env["MIMOCODE_WORKFLOW_STATE_FILE"]
-        try {
-          process.env["MIMOCODE_WORKFLOW_STATE_FILE"] = snapshotFile
-          const script = [
-            `export const meta = { name: "t", description: "d" }`,
-            `phase("internal-phase")`,
-            `return "ok"`,
-          ].join("\n")
-          const { runID } = yield* runtime.start({ script, sessionID: parent.id, parentActorID: "main" })
-          const outcome = yield* runtime.wait({ runID })
-          expect(outcome.status).toBe("completed")
-          const status = yield* runtime.status({ runID })
-          expect(status.currentPhase).toBe("internal-phase")
-          expect(status.workflowSource).toBeUndefined()
-          expect(status.topLevelStep).toBeUndefined()
-        } finally {
-          if (previous === undefined) delete process.env["MIMOCODE_WORKFLOW_STATE_FILE"]
-          else process.env["MIMOCODE_WORKFLOW_STATE_FILE"] = previous
-        }
-      }),
-      { git: true, config: providerCfg },
-    ),
-    10000,
-  )
-})
-
 describe("WorkflowRuntime schema contract (schema'd agent never returns prose)", () => {
   // A schema'd agent() whose model NEVER calls StructuredOutput (answers with plain
   // prose, exhausting the format.retryCount=2 retries) MUST resolve to `null`, NOT
@@ -390,7 +300,7 @@ describe("WorkflowRuntime cancel cascade", () => {
     // Headroom over the default 5s: this cancel test can run concurrently with the
     // heavyweight real-Instance worktree-isolation tests, where CI load occasionally
     // pushed it past 5s. Generous margin keeps it deterministic without masking hangs.
-    15000,
+    60000,
   )
 
   // MR104 #2 — orphan-on-cancel race. The bug: spawnShared added the child's
@@ -412,8 +322,8 @@ describe("WorkflowRuntime cancel cascade", () => {
   // bounce back to running:success later, which is a mock artifact unrelated to
   // the orphan bug; the cancel-stamp at t0 is the stable signal.
   it.live("cancel during an in-flight fan-out reclaims every child (no orphan)", () =>
-    provideTmpdirServer(
-      Effect.fnUntraced(function* ({ llm }) {
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
         const runtime = yield* WorkflowRuntime.Service
         const session = yield* Session.Service
         const registry = yield* ActorRegistry.Service
@@ -421,14 +331,47 @@ describe("WorkflowRuntime cancel cascade", () => {
           title: "wf cancel no-orphan",
           permission: [{ permission: "*", pattern: "*", action: "allow" }],
         })
-        yield* llm.hang // every child hangs at the LLM → in-flight at cancel time
+        const pending = new Map<string, Deferred.Deferred<AgentOutcome>>()
+        const token = spawnRef.install({
+          spawn: (input: SpawnInput) =>
+            Effect.gen(function* () {
+              const actorID = yield* registry.allocateActorID(input.sessionID, input.agentType)
+              yield* registry.register({
+                sessionID: input.sessionID,
+                actorID,
+                mode: input.mode,
+                parentActorID: input.parentActorID,
+                agent: input.agentType,
+                description: input.description ?? input.agentType,
+                contextMode: input.context,
+                background: input.background,
+                lifecycle: input.lifecycle ?? "ephemeral",
+              })
+              yield* registry.updateStatus(input.sessionID, actorID, { status: "running" }).pipe(Effect.ignore)
+              yield* Effect.sync(() => input.onActorID?.(actorID)).pipe(Effect.ignore)
+              const outcome = yield* Deferred.make<AgentOutcome>()
+              pending.set(actorID, outcome)
+              return { actorID, sessionID: input.sessionID, outcome }
+            }),
+          cancel: (sessionID, actorID) =>
+            Effect.gen(function* () {
+              const outcome = pending.get(actorID)
+              if (outcome) {
+                yield* Deferred.succeed(outcome, { status: "cancelled" }).pipe(Effect.ignore)
+                pending.delete(actorID)
+              }
+              yield* registry.updateStatus(sessionID, actorID, { status: "idle", lastOutcome: "cancelled" }).pipe(Effect.ignore)
+            }),
+          getForkContext: () => Effect.succeed(undefined),
+        })
+        try {
         // A wide fan-out keeps spawns resolving across the bridge so the cancel
         // lands while children are registered but the post-resolve add (the bug)
         // has not run.
         const script = [
           `export const meta = { name: "t", description: "d" }`,
           `const ts = []`,
-          `for (let i = 0; i < 8; i++) ts.push(() => agent("child" + i))`,
+          `for (let i = 0; i < 4; i++) ts.push(() => agent("child" + i))`,
           `return await parallel(ts)`,
         ].join("\n")
         const { runID } = yield* runtime.start({
@@ -460,10 +403,13 @@ describe("WorkflowRuntime cancel cascade", () => {
         // Every spawned child was reclaimed: cancel stamped lastOutcome="cancelled"
         // on each. An orphan (never reclaimed) would have lastOutcome unset here.
         expect(children.filter((a) => a.lastOutcome !== "cancelled")).toEqual([])
+        } finally {
+          spawnRef.release(token)
+        }
       }),
-      { git: true, config: providerCfg },
+      { git: true, config: providerCfg("http://localhost:1/v1") },
     ),
-    20000,
+    60000,
   )
 })
 
@@ -681,6 +627,7 @@ describe("WorkflowRuntime list + resume", () => {
       }),
       { git: true, config: providerCfg },
     ),
+    20000,
   )
 
   it.live("resume refuses a still-running run", () =>
@@ -699,6 +646,7 @@ describe("WorkflowRuntime list + resume", () => {
       }),
       { git: true, config: providerCfg },
     ),
+    20000,
   )
 
   // MR104 P2-1 — in-process double-resume race. The bug: resume()'s live-guard

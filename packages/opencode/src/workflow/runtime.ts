@@ -56,6 +56,23 @@ type WorkflowStatus = {
   workflowSource?: string
 }
 
+export function resolveWorkflowStateFile(workflowStateFile?: string, envFile = process.env["MIMOCODE_WORKFLOW_STATE_FILE"]) {
+  return workflowStateFile ?? envFile
+}
+
+export function mergeExternalWorkflowStatus(base: WorkflowStatus, external?: ExternalWorkflowSnapshot): WorkflowStatus {
+  return {
+    ...base,
+    ...(external?.source !== undefined ? { workflowSource: external.source } : {}),
+    ...(external?.currentPhase !== undefined ? { currentPhase: external.currentPhase } : {}),
+    ...(external?.topLevelStep !== undefined ? { topLevelStep: external.topLevelStep } : {}),
+    ...(external?.blocking !== undefined ? { blocking: external.blocking } : {}),
+    ...(external?.blockingGates !== undefined ? { blockingGates: external.blockingGates } : {}),
+    ...(external?.nextAction !== undefined ? { nextAction: external.nextAction } : {}),
+    ...(external?.readinessVerdict !== undefined ? { readinessVerdict: external.readinessVerdict } : {}),
+  }
+}
+
 export type RunOutcome =
   | { status: "completed"; result: unknown }
   | { status: "failed"; error: string }
@@ -82,6 +99,7 @@ interface RunEntry {
   // run re-warns. See resolveAgentModel.
   warnedModelRefs: Set<string>
   currentPhase: string | undefined
+  workflowStateFile: string | undefined
 }
 
 interface StartInput {
@@ -122,6 +140,9 @@ interface StartInput {
   depth?: number
   /** Max nesting depth before workflow() throws. Defaults to config (8). */
   maxDepth?: number
+  /** Optional per-run external workflow snapshot file. Takes precedence over the
+   * process-wide env fallback used by older integrations. */
+  workflowStateFile?: string
 }
 
 /** Options the guest may pass to `agent(prompt, opts?)`. */
@@ -406,6 +427,7 @@ export const layer = Layer.effect(
         capWarned: false,
         warnedModelRefs: new Set<string>(),
         currentPhase: undefined,
+        workflowStateFile: input.workflowStateFile,
       }
       runs.set(runID, entry)
       // Stamp a sha256 of the FULL script body (the exact bytes writeScript persists
@@ -1116,22 +1138,12 @@ export const layer = Layer.effect(
     const status = Effect.fn("WorkflowRuntime.status")(function* (input: { runID: string }) {
       const entry = runs.get(input.runID)
       if (!entry) return { status: "unknown" as const, agentCount: 0 }
-      const external = yield* Effect.promise(() => loadExternalWorkflowSnapshot(process.env["MIMOCODE_WORKFLOW_STATE_FILE"]))
-      return {
+      const external = yield* Effect.promise(() => loadExternalWorkflowSnapshot(resolveWorkflowStateFile(entry.workflowStateFile)))
+      return mergeExternalWorkflowStatus({
         status: entry.status,
         agentCount: entry.agentCount,
-        ...(external?.source !== undefined ? { workflowSource: external.source } : {}),
-        ...(external?.currentPhase !== undefined
-          ? { currentPhase: external.currentPhase }
-          : entry.currentPhase !== undefined
-            ? { currentPhase: entry.currentPhase }
-            : {}),
-        ...(external?.topLevelStep !== undefined ? { topLevelStep: external.topLevelStep } : {}),
-        ...(external?.blocking !== undefined ? { blocking: external.blocking } : {}),
-        ...(external?.blockingGates !== undefined ? { blockingGates: external.blockingGates } : {}),
-        ...(external?.nextAction !== undefined ? { nextAction: external.nextAction } : {}),
-        ...(external?.readinessVerdict !== undefined ? { readinessVerdict: external.readinessVerdict } : {}),
-      }
+        ...(entry.currentPhase !== undefined ? { currentPhase: entry.currentPhase } : {}),
+      }, external)
     })
 
     const wait = Effect.fn("WorkflowRuntime.wait")(function* (input: { runID: string; timeoutMs?: number }) {
@@ -1235,10 +1247,10 @@ export const layer = Layer.effect(
     // Late-bind the impl so the `workflow` tool can resolve it without forcing a
     // WorkflowRuntime.Service requirement onto ToolRegistry.layer. See
     // runtime-ref.ts for rationale.
-    workflowRef.current = impl
+    const workflowRefToken = workflowRef.install(impl)
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
-        if (workflowRef.current === impl) workflowRef.current = undefined
+        workflowRef.release(workflowRefToken)
       }),
     )
     return impl

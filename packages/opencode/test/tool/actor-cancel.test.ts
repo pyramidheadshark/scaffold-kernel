@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect } from "bun:test"
 import { Effect, Layer } from "effect"
 import { Agent } from "../../src/agent/agent"
 import { Bus } from "../../src/bus"
@@ -59,8 +59,9 @@ function parseOutput(output: string): CancelResponse {
 // test (with fiber interruption) lives in test/actor/spawn.test.ts.
 const cancelled: Array<{ sessionID: SessionID; actorID: string; mode: "graceful" | "forced" }> = []
 let installedRegistry: ActorRegistry.Interface | undefined
+let spawnRefToken: symbol | undefined
 beforeAll(() => {
-  spawnRef.current = {
+  spawnRefToken = spawnRef.install({
     spawn: () => Effect.die("spawn not used in cancel tests"),
     cancel: (sessionID, actorID, mode) =>
       Effect.gen(function* () {
@@ -70,7 +71,12 @@ beforeAll(() => {
         }
       }),
     getForkContext: () => Effect.succeed(undefined),
-  } satisfies ActorInterface
+  } satisfies ActorInterface)
+})
+
+afterAll(() => {
+  if (spawnRefToken) spawnRef.release(spawnRefToken)
+  installedRegistry = undefined
 })
 
 function ctxFor(sessionID: SessionID) {

@@ -367,11 +367,11 @@ describe("classifier routing — integration", () => {
                 watermarkMsgID,
                 model: { providerID: ProviderID.make("alibaba"), modelID: ModelID.make("qwen-plus") },
               }
-              spawnRef.current = {
-                getForkContext: (id: string) => Effect.succeed(id === forkActorID ? forkCtx : undefined),
-                spawn: () => Effect.die("spawn not used in fork-gate test"),
-                cancel: () => Effect.die("cancel not used in fork-gate test"),
-              } as unknown as NonNullable<typeof spawnRef.current>
+               const spawnToken = spawnRef.install({
+                 getForkContext: (id: string) => Effect.succeed(id === forkActorID ? forkCtx : undefined),
+                 spawn: () => Effect.die("spawn not used in fork-gate test"),
+                 cancel: () => Effect.die("cancel not used in fork-gate test"),
+               } as unknown as NonNullable<typeof spawnRef.current>)
 
               const result = yield* prompt.prompt({
                 sessionID: session.id,
@@ -393,12 +393,13 @@ describe("classifier routing — integration", () => {
               // non-`continue` result for the plain-text stop, and json_schema mode
               // makes the fork gate write StructuredOutputError.
               expect(result.info.role).toBe("assistant")
-              if (result.info.role === "assistant") {
-                expect(result.info.error?.name).toBe("StructuredOutputError")
-              }
-            }),
-          ),
-      })
+               if (result.info.role === "assistant") {
+                 expect(result.info.error?.name).toBe("StructuredOutputError")
+               }
+               spawnRef.release(spawnToken)
+             }),
+           ),
+       })
     } finally {
       spawnRef.current = prevSpawnRef
       await stub.stop()
@@ -442,11 +443,11 @@ describe("classifier routing — integration", () => {
                 watermarkMsgID,
                 model: { providerID: ProviderID.make("alibaba"), modelID: ModelID.make("qwen-plus") },
               }
-              spawnRef.current = {
-                getForkContext: (id: string) => Effect.succeed(id === forkActorID ? forkCtx : undefined),
-                spawn: () => Effect.die("spawn not used in fork content-filter test"),
-                cancel: () => Effect.die("cancel not used in fork content-filter test"),
-              } as unknown as NonNullable<typeof spawnRef.current>
+               const spawnToken = spawnRef.install({
+                 getForkContext: (id: string) => Effect.succeed(id === forkActorID ? forkCtx : undefined),
+                 spawn: () => Effect.die("spawn not used in fork content-filter test"),
+                 cancel: () => Effect.die("cancel not used in fork content-filter test"),
+               } as unknown as NonNullable<typeof spawnRef.current>)
 
               const result = yield* prompt.prompt({
                 sessionID: session.id,
@@ -462,12 +463,13 @@ describe("classifier routing — integration", () => {
 
               // filtered handled before the fork json_schema gate ⇒ ContentFilterError.
               expect(result.info.role).toBe("assistant")
-              if (result.info.role === "assistant") {
-                expect(result.info.error?.name).toBe("ContentFilterError")
-              }
-            }),
-          ),
-      })
+               if (result.info.role === "assistant") {
+                 expect(result.info.error?.name).toBe("ContentFilterError")
+               }
+               spawnRef.release(spawnToken)
+             }),
+           ),
+       })
     } finally {
       spawnRef.current = prevSpawnRef
       await stub.stop()

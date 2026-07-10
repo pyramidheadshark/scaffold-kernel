@@ -80,7 +80,7 @@ type RuntimeState = {
 }
 
 const log = Log.create({ service: "tui.plugin" })
-const DISPOSE_TIMEOUT_MS = 5000
+const DISPOSE_TIMEOUT_MS = 1000
 const KV_KEY = "plugin_enabled"
 const EMPTY_TUI: TuiPluginModule = {
   tui: async () => {},

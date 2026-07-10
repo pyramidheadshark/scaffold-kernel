@@ -14,5 +14,6 @@
 // `current` undefined; the tool treats a missing `current` as a runtime guard
 // rather than a hard invariant.
 import type { Interface as WorkflowRuntimeInterface } from "./runtime"
+import { createLateBoundRef } from "@/util/late-bound-ref"
 
-export const workflowRef: { current: WorkflowRuntimeInterface | undefined } = { current: undefined }
+export const workflowRef = createLateBoundRef<WorkflowRuntimeInterface>()

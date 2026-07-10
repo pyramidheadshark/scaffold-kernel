@@ -36,6 +36,7 @@ const ref = {
 // "settle the next outcome" knobs (success for T3, failure for T9/T10).
 const spawnLog: { count: number; lastInput?: { sessionID: string; parentSessionID?: string; mode: string } } = { count: 0 }
 const settleNextSuccess: { value: boolean } = { value: false }
+let prefixCaptureToken: symbol | undefined
 // T10 uses explicit (test-driven) settlement to avoid the documented race
 // in prune.ts:321-329 (settle watcher in checkpoint.ts deletes writers Map
 // before prune's waitForWriter has a chance to grab it). Collected outcomes
@@ -77,10 +78,10 @@ const recordingActor = Layer.effect(
       cancel: () => Effect.void,
       getForkContext: () => Effect.succeed(undefined),
     })
-    spawnRef.current = impl
+    const spawnToken = spawnRef.install(impl)
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
-        if (spawnRef.current === impl) spawnRef.current = undefined
+        spawnRef.release(spawnToken)
       }),
     )
     return impl
@@ -126,7 +127,8 @@ const resetSpawnLog = Effect.sync(() => {
   spawnLog.lastInput = undefined
   settleNextSuccess.value = false
   pendingOutcomes.length = 0
-  prefixCaptureRef.current = undefined
+  if (prefixCaptureToken) prefixCaptureRef.release(prefixCaptureToken)
+  prefixCaptureToken = prefixCaptureRef.install(undefined)
 })
 
 // Seeds a parent session with a single user message + text part — same

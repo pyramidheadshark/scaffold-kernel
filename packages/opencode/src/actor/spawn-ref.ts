@@ -12,5 +12,6 @@
 // so a missing `current` is treated as a runtime guard rather than a hard
 // invariant.
 import type { Interface as ActorInterface } from "./spawn"
+import { createLateBoundRef } from "@/util/late-bound-ref"
 
-export const spawnRef: { current: ActorInterface | undefined } = { current: undefined }
+export const spawnRef = createLateBoundRef<ActorInterface>()

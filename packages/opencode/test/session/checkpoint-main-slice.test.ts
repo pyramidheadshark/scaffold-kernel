@@ -58,7 +58,7 @@ const recordingActor = Layer.effect(
       cancel: () => Effect.void,
       getForkContext: () => Effect.succeed(undefined),
     })
-    spawnRef.current = impl
+    const spawnToken = spawnRef.install(impl)
 
     // Stand-in prefix capture: records what msgs[] was passed in (which is
     // the slice tryStartCheckpointWriter sliced from `msgs` at the watermark)
@@ -76,12 +76,12 @@ const recordingActor = Layer.effect(
           parentPermission: [],
         }
       })
-    prefixCaptureRef.current = capture
+    const prefixToken = prefixCaptureRef.install(capture)
 
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
-        if (spawnRef.current === impl) spawnRef.current = undefined
-        if (prefixCaptureRef.current === capture) prefixCaptureRef.current = undefined
+        spawnRef.release(spawnToken)
+        prefixCaptureRef.release(prefixToken)
       }),
     )
     return impl

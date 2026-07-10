@@ -10,7 +10,7 @@ export * as BuiltinWorkflow from "./builtin"
 // used: it reads the real filesystem at runtime, which does not exist inside a
 // compiled standalone binary.
 // @ts-expect-error TS1192: import-attribute text loader, resolved by Bun not tsgo
-import DEEP_RESEARCH_SCRIPT from "./builtin/deep-research.js" with { type: "text" }
+import DEEP_RESEARCH_SCRIPT from "./builtin/deep-research.txt" with { type: "text" }
 import { parseMeta } from "./meta"
 
 export type Entry = {
@@ -26,7 +26,7 @@ export type Entry = {
 // `file` is carried so a malformed meta names the offending script — this throw
 // runs at module init, so a broken built-in fails the whole app boot; the path
 // tells the user which one.
-const SCRIPTS: { file: string; script: string }[] = [{ file: "deep-research.js", script: DEEP_RESEARCH_SCRIPT }]
+const SCRIPTS: { file: string; script: string }[] = [{ file: "deep-research.txt", script: DEEP_RESEARCH_SCRIPT }]
 
 // Null-prototype so the registry is a self-evidently closed set: a lookup like
 // get("constructor")/get("toString") returns undefined, not an inherited

@@ -7,6 +7,7 @@ import { Memory } from "../../src/memory"
 import { ActorRegistry } from "../../src/actor/registry"
 import { Actor, type AgentOutcome } from "../../src/actor/spawn"
 import { spawnRef } from "../../src/actor/spawn-ref"
+import { prefixCaptureRef } from "../../src/session/prefix-capture-ref"
 import { TaskRegistry } from "../../src/task/registry"
 import { SessionCheckpoint } from "../../src/session/checkpoint"
 import { Log } from "../../src/util"
@@ -25,6 +26,8 @@ const ref = {
   providerID: ProviderID.make("test"),
   modelID: ModelID.make("test-model"),
 }
+
+let prefixCaptureToken: symbol | undefined
 
 // Actor stub that never resolves its outcome — simulates a writer subagent
 // stuck waiting on an LLM round-trip the shutdown budget can't afford.
@@ -49,10 +52,16 @@ const hangingActor = Layer.effect(
       cancel: () => Effect.void,
       getForkContext: () => Effect.succeed(undefined),
     })
-    spawnRef.current = impl
+    const spawnToken = spawnRef.install(impl)
+    if (prefixCaptureToken) prefixCaptureRef.release(prefixCaptureToken)
+    prefixCaptureToken = prefixCaptureRef.install(undefined)
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
-        if (spawnRef.current === impl) spawnRef.current = undefined
+        spawnRef.release(spawnToken)
+        if (prefixCaptureToken) {
+          prefixCaptureRef.release(prefixCaptureToken)
+          prefixCaptureToken = undefined
+        }
       }),
     )
     return impl
