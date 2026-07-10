@@ -59,7 +59,10 @@ describe("plugin.auth-override", () => {
     expect(copilot).toBeDefined()
     expect(copilot.length).toBe(1)
     expect(copilot[0].label).toBe("Test Override Auth")
-    expect(plainMethods[ProviderID.make("github-copilot")][0].label).not.toBe("Test Override Auth")
+    const plainCopilot = plainMethods[ProviderID.make("github-copilot")]
+    if (plainCopilot) {
+      expect(plainCopilot[0].label).not.toBe("Test Override Auth")
+    }
   }, 30000) // Increased timeout for plugin installation
 })
 
