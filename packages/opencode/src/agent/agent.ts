@@ -198,6 +198,8 @@ export const layer = Layer.effect(
               defaults,
               Permission.fromConfig({
                 change_directory: "deny",
+                todoread: "deny",
+                todowrite: "deny",
               }),
               user,
             ),

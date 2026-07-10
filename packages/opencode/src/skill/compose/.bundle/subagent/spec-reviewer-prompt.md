@@ -16,8 +16,9 @@ Dispatch with the spec section text and the diff ONLY. Do NOT include the
 implementer's report — its claims would anchor the reviewer toward confirming what
 was reported and away from finding what was silently omitted.
 
-Dispatch a spec-compliance reviewer as a `general` subagent via the `actor` tool,
-following the syntax in that tool's own description. Use a title like "Spec
+Dispatch a spec-compliance reviewer via the `actor` tool with
+`subagent_type: "general"`, following the syntax in that tool's own description.
+Use a title like "Spec
 review Task N — phase 1" and give it this prompt:
 
 ~~~
@@ -81,8 +82,9 @@ Only if phase 1 flagged any `fail`, `unverifiable`, or extra work. Give the SAME
 reviewer its phase-1 verdict plus the implementer's report. The report may explain a
 flagged diff ("that odd line is a deliberate decision described in my report").
 
-Dispatch the same reviewer again as a `general` subagent via the `actor` tool,
-with a title like "Spec review Task N — phase 2", and this prompt:
+Dispatch the same reviewer again via the `actor` tool with
+`subagent_type: "general"`, with a title like "Spec review Task N — phase 2",
+and this prompt:
 
 ~~~
 Here is your phase-1 verdict and the implementer's report. Use the report ONLY

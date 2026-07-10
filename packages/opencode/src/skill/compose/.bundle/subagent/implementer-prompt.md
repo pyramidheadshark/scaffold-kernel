@@ -2,9 +2,9 @@
 
 Use this template when dispatching an implementer subagent.
 
-Dispatch a `general` subagent via the `actor` tool, following the syntax in that
-tool's own description. Use a title like "Implement Task N: [task name]" and give
-it this prompt:
+Dispatch via the `actor` tool with `subagent_type: "general"`, following the
+syntax in that tool's own description. Use a title like "Implement Task N: [task
+name]" and give it this prompt:
 
 ~~~
     You are implementing Task N: [task name]

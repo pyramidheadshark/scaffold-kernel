@@ -6,8 +6,8 @@ Use this template when dispatching a code quality reviewer subagent.
 
 **Only dispatch after spec compliance review passes.**
 
-Dispatch a `general` subagent via the `actor` tool, following the syntax in that
-tool's own description. Build the prompt from
+Dispatch via the `actor` tool with `subagent_type: "general"`, following the
+syntax in that tool's own description. Build the prompt from
 `<compose:review>/code-reviewer.md`, filling in:
 
 - DESCRIPTION: [task summary, from implementer's report]
