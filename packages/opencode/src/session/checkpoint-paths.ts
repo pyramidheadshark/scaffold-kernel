@@ -38,6 +38,21 @@ export function globalMemoryPath(): string {
   return path.join(Global.Path.data, "memory", "global", "MEMORY.md")
 }
 
+async function exactEntryState(filePath: string): Promise<"exact" | "case-insensitive-alias" | "missing"> {
+  const dir = path.dirname(filePath)
+  const base = path.basename(filePath)
+  let entries: string[]
+  try {
+    entries = await fs.readdir(dir)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing"
+    throw error
+  }
+  if (entries.includes(base)) return "exact"
+  if (entries.some((entry) => entry.toLowerCase() === base.toLowerCase())) return "case-insensitive-alias"
+  return "missing"
+}
+
 /**
  * One-shot rename of a legacy `projects/<pid>/memory.md` to the canonical
  * `MEMORY.md`. Idempotent: no-op when the uppercase file already exists or
@@ -48,15 +63,26 @@ export function globalMemoryPath(): string {
 export async function migrateProjectMemory(projectID: ProjectID): Promise<void> {
   const upper = memoryPath(projectID)
   const lower = path.join(path.dirname(upper), "memory.md")
-  if (await Bun.file(upper).exists()) return
-  if (await Bun.file(lower).exists())
-    // Two migrators (e.g. concurrent sessions/writers on the same project) can
-    // both pass the exists() checks; the loser's rename then sees lower already
-    // gone. ENOENT means the peer won — treat as success. Re-throw real FS
-    // errors (permissions, disk).
-    await fs.rename(lower, upper).catch((e) => {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e
-    })
+  const upperState = await exactEntryState(upper)
+  if (upperState === "exact") return
+  const lowerState = await exactEntryState(lower)
+  if (lowerState === "missing") return
+
+  // On case-insensitive filesystems a legacy `memory.md` aliases `MEMORY.md`, so
+  // a direct lower->upper rename can behave like a no-op. Rename through a unique
+  // temp name first to force the directory entry's casing to canonicalize.
+  const temp = path.join(path.dirname(upper), `.memory-migrate-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`)
+
+  await fs.rename(lower, temp).catch((e) => {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e
+  })
+
+  const tempState = await exactEntryState(temp)
+  if (tempState === "missing") return
+
+  await fs.rename(temp, upper).catch((e) => {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e
+  })
 }
 
 /**

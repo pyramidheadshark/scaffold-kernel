@@ -6,6 +6,14 @@ import { SessionID } from "../../src/session/schema"
 import { ProjectID } from "../../src/project/schema"
 import { notesPath, globalMemoryPath, memoryPath, migrateProjectMemory } from "../../src/session/checkpoint-paths"
 
+async function exactEntries(dir: string) {
+  try {
+    return await fs.readdir(dir)
+  } catch {
+    return []
+  }
+}
+
 describe("notesPath (F14)", () => {
   test("resolves to <data>/memory/sessions/<sid>/notes.md", () => {
     const sid = SessionID.make("ses_test_xyz")
@@ -32,8 +40,10 @@ describe("migrateProjectMemory", () => {
 
     await migrateProjectMemory(pid)
 
+    const entries = await exactEntries(dir)
     expect(await Bun.file(upper).text()).toBe("legacy content")
-    expect(await Bun.file(lower).exists()).toBe(false)
+    expect(entries).toContain("MEMORY.md")
+    expect(entries).not.toContain("memory.md")
     await fs.rm(dir, { recursive: true, force: true })
   })
 
@@ -48,8 +58,21 @@ describe("migrateProjectMemory", () => {
 
     await migrateProjectMemory(pid)
 
-    // Existing MEMORY.md is authoritative; legacy left untouched (not clobbered).
-    expect(await Bun.file(upper).text()).toBe("new content")
+    const entries = await exactEntries(dir)
+    if (entries.includes("MEMORY.md") && entries.includes("memory.md")) {
+      // Case-sensitive filesystem: both names can coexist, so the canonical
+      // uppercase file remains authoritative and the legacy lowercase entry is
+      // left untouched.
+      expect(await Bun.file(upper).text()).toBe("new content")
+      expect(entries).toContain("memory.md")
+    } else {
+      // Case-insensitive filesystem: the second write aliases the same inode and
+      // leaves the directory entry lowercase. Migration then canonicalizes that
+      // single entry back to MEMORY.md, preserving the last written content.
+      expect(await Bun.file(upper).text()).toBe("stale legacy")
+      expect(entries).toContain("MEMORY.md")
+      expect(entries).not.toContain("memory.md")
+    }
     await fs.rm(dir, { recursive: true, force: true })
   })
 
@@ -70,9 +93,11 @@ describe("migrateProjectMemory", () => {
     // Both pass the exists() checks before either rename runs; the loser's
     // rename hits ENOENT and must be swallowed, not thrown.
     const results = await Promise.allSettled([migrateProjectMemory(pid), migrateProjectMemory(pid)])
+    const entries = await exactEntries(dir)
     expect(results.every((r) => r.status === "fulfilled")).toBe(true)
     expect(await Bun.file(upper).text()).toBe("legacy content")
-    expect(await Bun.file(lower).exists()).toBe(false)
+    expect(entries).toContain("MEMORY.md")
+    expect(entries).not.toContain("memory.md")
     await fs.rm(dir, { recursive: true, force: true })
   })
 })
