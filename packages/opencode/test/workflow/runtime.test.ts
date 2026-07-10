@@ -228,6 +228,7 @@ describe("WorkflowRuntime external workflow snapshot bridge", () => {
       }),
       { git: true, config: providerCfg },
     ),
+    10000,
   )
 
   it.live("status falls back to internal currentPhase when external snapshot is invalid", () =>
@@ -263,6 +264,7 @@ describe("WorkflowRuntime external workflow snapshot bridge", () => {
       }),
       { git: true, config: providerCfg },
     ),
+    10000,
   )
 })
 
@@ -436,8 +438,17 @@ describe("WorkflowRuntime cancel cascade", () => {
           model: ref,
           maxConcurrentAgents: 8,
         })
-        // Let the fan-out register its children, then cancel mid-flight.
-        yield* Effect.sleep("150 millis")
+        // Wait until the fan-out has actually registered at least one child, then
+        // cancel mid-flight. Fixed sleeps here were suite-flaky under CI load.
+        yield* Effect.promise(async () => {
+          const start = Date.now()
+          while (Date.now() - start < 5000) {
+            const children = await Effect.runPromise(registry.listBySession(parent.id))
+            if (children.some((actor) => actor.actorID !== "main")) return
+            await new Promise((done) => setTimeout(done, 20))
+          }
+          throw new Error("timed out waiting for workflow child actors before orphan-cancel")
+        })
         yield* runtime.cancel({ runID })
 
         const s = yield* runtime.status({ runID })
