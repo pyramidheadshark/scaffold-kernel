@@ -22,47 +22,60 @@ afterEach(async () => {
   await Instance.disposeAll()
 })
 
+async function withInternalPluginsEnabled<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = process.env["MIMOCODE_DISABLE_DEFAULT_PLUGINS"]
+  delete process.env["MIMOCODE_DISABLE_DEFAULT_PLUGINS"]
+  try {
+    return await fn()
+  } finally {
+    if (previous === undefined) delete process.env["MIMOCODE_DISABLE_DEFAULT_PLUGINS"]
+    else process.env["MIMOCODE_DISABLE_DEFAULT_PLUGINS"] = previous
+  }
+}
+
 describe("CheckpointSplitoverPlugin (integration)", () => {
   test("triggerActorPreStop(checkpoint-writer) on over-budget file → continue=true with EXTRACTION reason", async () => {
-    await using tmp = await tmpdir({})
+    await withInternalPluginsEnabled(async () => {
+      await using tmp = await tmpdir({})
 
-    const sessionID = ("s_" + Math.random().toString(36).slice(2, 10)) as SessionID
+      const sessionID = ("s_" + Math.random().toString(36).slice(2, 10)) as SessionID
 
-    // Write an over-budget checkpoint.md before invoking the plugin. metaDir()
-    // resolves under XDG_DATA_HOME (set per-PID by test/preload.ts), so the
-    // file lives in the same data root the plugin will read from inside
-    // Instance.provide.
-    await fs.mkdir(metaDir(sessionID), { recursive: true })
-    await fs.writeFile(checkpointPath(sessionID), "## §1 Active intent\n" + "x ".repeat(3000) + "\n")
-    // memory.md intentionally absent: missing memory file produces no violation
-    // (validateMemory is gated on expectedRevisions.length > 0), so the only
-    // signal in this test is the over-budget checkpoint.
+      // Write an over-budget checkpoint.md before invoking the plugin. metaDir()
+      // resolves under XDG_DATA_HOME (set per-PID by test/preload.ts), so the
+      // file lives in the same data root the plugin will read from inside
+      // Instance.provide.
+      await fs.mkdir(metaDir(sessionID), { recursive: true })
+      await fs.writeFile(checkpointPath(sessionID), "## §1 Active intent\n" + "x ".repeat(30000) + "\n")
+      // memory.md intentionally absent: missing memory file produces no violation
+      // (validateMemory is gated on expectedRevisions.length > 0), so the only
+      // signal in this test is the over-budget checkpoint.
 
-    const result = await Instance.provide({
-      directory: tmp.path,
-      fn: async () =>
-        Effect.gen(function* () {
-          const plugin = yield* Plugin.Service
-          return yield* plugin.triggerActorPreStop({
-            sessionID,
-            actorID: "act_int_test",
-            agentType: "checkpoint-writer",
-            mode: "subagent",
-            lifecycle: "ephemeral",
-            task: "checkpoint",
-            iteration: 0,
-          })
-        }).pipe(Effect.provide(Plugin.defaultLayer), Effect.runPromise),
+      const result = await Instance.provide({
+        directory: tmp.path,
+        fn: async () =>
+          Effect.gen(function* () {
+            const plugin = yield* Plugin.Service
+            return yield* plugin.triggerActorPreStop({
+              sessionID,
+              actorID: "act_int_test",
+              agentType: "checkpoint-writer",
+              mode: "subagent",
+              lifecycle: "ephemeral",
+              task: "checkpoint",
+              iteration: 0,
+            })
+          }).pipe(Effect.provide(Plugin.defaultLayer), Effect.runPromise),
+      })
+
+      expect(result.continue).toBe(true)
+      expect(result.reason).toBeDefined()
+      expect(result.reason!).toContain("EXTRACTION REQUIRED")
+      // "CheckpointSplitoverPlugin" tracks the function's .name — applyPlugin
+      // records pluginName via plugin.name (src/plugin/index.ts). Rewriting the
+      // export as a const arrow would change .name and break this assertion.
+      expect(result.contributingPluginNames).toContain("CheckpointSplitoverPlugin")
+      expect(result.contributingHookIDs.some((id) => id.endsWith("#actor.preStop"))).toBe(true)
     })
-
-    expect(result.continue).toBe(true)
-    expect(result.reason).toBeDefined()
-    expect(result.reason!).toContain("EXTRACTION REQUIRED")
-    // "CheckpointSplitoverPlugin" tracks the function's .name — applyPlugin
-    // records pluginName via plugin.name (src/plugin/index.ts). Rewriting the
-    // export as a const arrow would change .name and break this assertion.
-    expect(result.contributingPluginNames).toContain("CheckpointSplitoverPlugin")
-    expect(result.contributingHookIDs.some((id) => id.endsWith("#actor.preStop"))).toBe(true)
   })
 })
 
@@ -86,12 +99,13 @@ describe("CheckpointSplitoverPlugin spawn-loop integration", () => {
     //      corrected state → hook returns continue=false → delivery.)
     //   5. Turn 1 runs; preStop hook reads clean file → continue=false.
     //   6. Outcome: success, two captures, exactly one ReActReentered.
-    const server = startScriptedLLMServer([
-      { lines: textStopResponse("first writer turn (over-budget)") },
-      { lines: textStopResponse("repair turn (clean)") },
-    ])
+    await withInternalPluginsEnabled(async () => {
+      const server = startScriptedLLMServer([
+        { lines: textStopResponse("first writer turn (over-budget)") },
+        { lines: textStopResponse("repair turn (clean)") },
+      ])
 
-    const OVERSIZED = "## §1 Active intent\n" + "x ".repeat(3000) + "\n"
+    const OVERSIZED = "## §1 Active intent\n" + "x ".repeat(30000) + "\n"
     const CLEAN = `Topic: clean repair output
 
 ### Execution context
@@ -110,9 +124,9 @@ describe("CheckpointSplitoverPlugin spawn-loop integration", () => {
 (none)
 `
 
-    let sessionIDForCleanup: SessionID | undefined
-    try {
-      await using tmp = await tmpdir({
+      let sessionIDForCleanup: SessionID | undefined
+      try {
+        await using tmp = await tmpdir({
         init: async (dir) => {
           await Bun.write(
             `${dir}/mimocode.json`,
@@ -137,7 +151,7 @@ describe("CheckpointSplitoverPlugin spawn-loop integration", () => {
         },
       })
 
-      const { outcome, reenteredEvents } = await Instance.provide({
+        const { outcome, reenteredEvents } = await Instance.provide({
         directory: tmp.path,
         fn: async () =>
           AppRuntime.runPromise(
@@ -200,28 +214,29 @@ describe("CheckpointSplitoverPlugin spawn-loop integration", () => {
           ),
       })
 
-      if (outcome.status === "failure") throw new Error(`Actor failed: ${outcome.error}`)
-      if (outcome.status === "cancelled") throw new Error("Actor was cancelled")
+        if (outcome.status === "failure") throw new Error(`Actor failed: ${outcome.error}`)
+        if (outcome.status === "cancelled") throw new Error("Actor was cancelled")
 
       // Exactly two LLM calls — proves the ReAct loop ran one repair turn,
       // not zero (no reentry) and not three (cap).
-      expect(server.captures.length).toBe(2)
+        expect(server.captures.length).toBe(2)
 
       // At least one ReActReentered fired in the pre phase, attributed to
       // CheckpointSplitoverPlugin. The subscriber's callback overwrote the
       // file → second preStop saw clean content → no further re-entries.
-      const preEvents = reenteredEvents.filter((e) => e.phase === "pre")
-      expect(preEvents.length).toBe(1)
-      expect(preEvents[0].triggeredByPlugins).toContain("CheckpointSplitoverPlugin")
-      expect(preEvents[0].iteration).toBe(1)
-    } finally {
-      await server.stop()
-      // Best-effort cleanup of pre-written metaDir (Instance.disposeAll
-      // doesn't touch the data root).
-      if (sessionIDForCleanup) {
-        await fs.rm(metaDir(sessionIDForCleanup), { recursive: true, force: true }).catch(() => {})
+        const preEvents = reenteredEvents.filter((e) => e.phase === "pre")
+        expect(preEvents.length).toBe(1)
+        expect(preEvents[0].triggeredByPlugins).toContain("CheckpointSplitoverPlugin")
+        expect(preEvents[0].iteration).toBe(1)
+      } finally {
+        await server.stop()
+        // Best-effort cleanup of pre-written metaDir (Instance.disposeAll
+        // doesn't touch the data root).
+        if (sessionIDForCleanup) {
+          await fs.rm(metaDir(sessionIDForCleanup), { recursive: true, force: true }).catch(() => {})
+        }
       }
-    }
+    })
   })
 })
 
