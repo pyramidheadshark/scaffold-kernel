@@ -293,7 +293,7 @@ describe("Tool whitelist (Task 14)", () => {
         })
 
         // Locate the bash tool part in the persisted message stream.
-        const msgs = yield* MessageV2.filterCompactedEffect(session.id)
+        const msgs = yield* MessageV2.filterCompactedEffect(session.id, { agentID: actorID })
         const tool = msgs
           .flatMap((msg) => msg.parts)
           .find(

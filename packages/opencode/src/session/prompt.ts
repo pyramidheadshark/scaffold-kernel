@@ -885,7 +885,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         tool: ActorTool.id,
         state: {
           status: "running",
+          title: task.description,
           input: taskArgs,
+          metadata: {
+            sessionId: sessionID,
+            model: {
+              providerID: taskModel.providerID,
+              modelID: taskModel.id,
+            },
+          },
           time: { start: Date.now() },
         },
       })
@@ -905,6 +913,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       }
 
       let error: Error | undefined
+      let spawnedActorID: string | undefined
       const taskAbort = new AbortController()
       const result = yield* actorTool
         .execute(taskArgs, {
@@ -913,7 +922,13 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           sessionID,
           abort: taskAbort.signal,
           callID: part.callID,
-          extra: { bypassAgentCheck: true, promptOps },
+          extra: {
+            bypassAgentCheck: true,
+            promptOps,
+            onActorID: (actorID: string) => {
+              spawnedActorID = actorID
+            },
+          },
           messages: msgs,
           metadata: (val: { title?: string; metadata?: Record<string, any> }) =>
             Effect.gen(function* () {
@@ -941,7 +956,18 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           }),
           Effect.onInterrupt(() =>
             Effect.gen(function* () {
+              const actorID =
+                spawnedActorID ??
+                (part.state.status === "running" && typeof part.state.metadata?.actorId === "string"
+                  ? part.state.metadata.actorId
+                  : undefined)
               taskAbort.abort()
+              if (actorID) {
+                const actor = spawnRef.current
+                if (actor) {
+                  Effect.runFork(actor.cancel(sessionID, actorID, "graceful").pipe(Effect.ignore))
+                }
+              }
               assistantMessage.finish = "tool-calls"
               assistantMessage.time.completed = Date.now()
               yield* sessions.updateMessage(assistantMessage)

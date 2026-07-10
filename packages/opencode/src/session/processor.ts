@@ -287,6 +287,7 @@ export const layer: Layer.Layer<
             input: match.part.state.input,
             error: errorMessage(error),
             time: { start: match.part.state.time.start, end: Date.now() },
+            metadata: match.part.state.metadata,
           },
         })
         // Check for direct rejection error or FiberFailure wrapping one (PI-103).
@@ -389,19 +390,44 @@ export const layer: Layer.Layer<
             if (ctx.assistantMessage.summary) {
               throw new Error(`Tool call not allowed while generating summary: ${value.toolName}`)
             }
-            yield* updateToolCall(value.toolCallId, (match) => ({
-              ...match,
-              tool: value.toolName,
-              state: {
-                ...match.state,
-                status: "running",
-                input: value.input,
-                time: { start: Date.now() },
-              },
-              metadata: match.metadata?.providerExecuted
-                ? { ...value.providerMetadata, providerExecuted: true }
-                : value.providerMetadata,
-            }))
+            yield* updateToolCall(value.toolCallId, (match) => {
+              const previousTitle =
+                match.state.status === "running" || match.state.status === "completed"
+                  ? match.state.title
+                  : undefined
+              const previousMetadata =
+                "metadata" in match.state && isRecord(match.state.metadata) ? match.state.metadata : undefined
+              return {
+                ...match,
+                tool: value.toolName,
+                state: {
+                  ...match.state,
+                  title:
+                    previousTitle ??
+                    (value.toolName === "actor" && isRecord(value.input) && typeof value.input["description"] === "string"
+                      ? value.input["description"]
+                      : previousTitle),
+                  status: "running",
+                  input: value.input,
+                  metadata: {
+                    ...(previousMetadata ?? {}),
+                    ...(value.toolName === "actor"
+                      ? {
+                          sessionId: ctx.sessionID,
+                          model: {
+                            providerID: ctx.model.providerID,
+                            modelID: ctx.model.id,
+                          },
+                        }
+                      : {}),
+                    ...(previousMetadata?.providerExecuted
+                      ? { ...value.providerMetadata, providerExecuted: true }
+                      : (value.providerMetadata ?? {})),
+                  },
+                  time: { start: Date.now() },
+                },
+              }
+            })
 
             const parts = MessageV2.parts(ctx.assistantMessage.id)
             const recentParts = parts.slice(-DOOM_LOOP_THRESHOLD)

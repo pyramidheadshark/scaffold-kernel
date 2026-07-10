@@ -689,6 +689,14 @@ export const ActorTool = Tool.define(
               providerID: msg.info.providerID,
             })
 
+        yield* ctx.metadata({
+          title: op.description,
+          metadata: {
+            sessionId: ctx.sessionID,
+            model,
+          },
+        })
+
         // Validate task_id by reference at execute time (NOT in the schema, so a
         // bad value degrades instead of hard-failing the call). A malformed shape
         // or an ID that names no task in this session ⇒ run ad-hoc (task_id
@@ -725,6 +733,24 @@ export const ActorTool = Tool.define(
           model,
           background,
           task_id: effectiveTaskId,
+          onActorID: (actorID) => {
+            const onActorID = ctx.extra?.["onActorID"]
+            if (typeof onActorID === "function") {
+              try {
+                onActorID(actorID)
+              } catch {}
+            }
+            Effect.runFork(
+              ctx.metadata({
+                title: op.description,
+                metadata: {
+                  sessionId: ctx.sessionID,
+                  actorId: actorID,
+                  model,
+                },
+              }),
+            )
+          },
           ...(op.output_schema
             ? { format: { type: "json_schema" as const, schema: op.output_schema, retryCount: 2 } }
             : {}),

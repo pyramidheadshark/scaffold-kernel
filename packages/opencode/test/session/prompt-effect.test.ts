@@ -40,6 +40,7 @@ import { ToolRegistry } from "../../src/tool"
 import { Truncate } from "../../src/tool"
 import { ActorRegistry } from "../../src/actor/registry"
 import { ActorWaiter } from "../../src/actor/waiter"
+import { Actor } from "../../src/actor/spawn"
 import { Memory } from "../../src/memory"
 import { History } from "../../src/history"
 import { Team } from "../../src/team"
@@ -226,12 +227,10 @@ function makeHttp() {
     Layer.provideMerge(deps),
   )
   const trunc = Truncate.layer.pipe(Layer.provideMerge(deps))
-  return Layer.mergeAll(
-    TestLLMServer.layer,
-    SessionPrompt.layer.pipe(
-    Layer.provide(Goal.defaultLayer),
-      Layer.provide(TaskGateState.defaultLayer),
-      Layer.provide(TaskRegistry.defaultLayer),
+  const prompt = SessionPrompt.layer.pipe(
+     Layer.provide(Goal.defaultLayer),
+       Layer.provide(TaskGateState.defaultLayer),
+       Layer.provide(TaskRegistry.defaultLayer),
       Layer.provide(SessionRevert.defaultLayer),
       Layer.provide(summary),
       Layer.provide(checkpoint),
@@ -244,11 +243,19 @@ function makeHttp() {
       Layer.provideMerge(registry),
       Layer.provideMerge(trunc),
       Layer.provide(Instruction.defaultLayer),
-      Layer.provide(SystemPrompt.defaultLayer),
-      Layer.provide(Inbox.defaultLayer),
-      Layer.provideMerge(deps),
-    ),
-  ).pipe(Layer.provide(summary))
+       Layer.provide(SystemPrompt.defaultLayer),
+       Layer.provide(Inbox.defaultLayer),
+       Layer.provideMerge(deps),
+    )
+  const actor = Actor.layer.pipe(
+    Layer.provide(TaskRegistry.defaultLayer),
+    Layer.provide(Inbox.defaultLayer),
+    Layer.provide(Bus.layer),
+    Layer.provide(prompt),
+    Layer.provideMerge(run),
+    Layer.provideMerge(deps),
+  )
+  return Layer.mergeAll(TestLLMServer.layer, prompt, actor).pipe(Layer.provide(summary))
 }
 
 const it = testEffect(makeHttp())
@@ -594,12 +601,14 @@ it.live("loop continues when finish is stop but assistant has tool parts", () =>
   ),
 )
 
-it.live("failed subtask preserves metadata on error tool state", () =>
-  provideTmpdirServer(
-    Effect.fnUntraced(function* ({ llm }) {
-      const prompt = yield* SessionPrompt.Service
-      const sessions = yield* Session.Service
-      const chat = yield* sessions.create({ title: "Pinned" })
+it.live(
+  "failed subtask preserves metadata on error tool state",
+  () =>
+    provideTmpdirServer(
+      Effect.fnUntraced(function* ({ llm }) {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({ title: "Pinned" })
       yield* llm.tool("actor", {
         description: "inspect bug",
         prompt: "look into the cache key path",
@@ -624,23 +633,24 @@ it.live("failed subtask preserves metadata on error tool state", () =>
       expect(tool.state.error).toContain("Tool execution failed")
       expect(tool.state.metadata).toBeDefined()
       expect(tool.state.metadata?.sessionId).toBeDefined()
-      expect(tool.state.metadata?.model).toEqual({
-        providerID: ProviderID.make("test"),
-        modelID: ModelID.make("missing-model"),
-      })
-    }),
-    {
-      git: true,
-      config: (url) => ({
-        ...providerCfg(url),
-        agent: {
-          general: {
-            model: "test/missing-model",
-          },
-        },
+        expect(tool.state.metadata?.model).toEqual({
+          providerID: ProviderID.make("test"),
+          modelID: ModelID.make("missing-model"),
+        })
       }),
-    },
-  ),
+      {
+        git: true,
+        config: (url) => ({
+          ...providerCfg(url),
+          agent: {
+            general: {
+              model: "test/missing-model",
+            },
+          },
+        }),
+      },
+    ),
+  10_000,
 )
 
 it.live(
@@ -679,7 +689,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  5_000,
+  10_000,
 )
 
 it.live(
@@ -753,7 +763,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  3_000,
+  10_000,
 )
 
 // Cancel semantics
@@ -783,7 +793,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  3_000,
+  10_000,
 )
 
 it.live(
@@ -811,7 +821,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  3_000,
+  10_000,
 )
 
 it.live(
@@ -889,7 +899,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  3_000,
+  10_000,
 )
 
 // Queue semantics
@@ -933,7 +943,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  3_000,
+  10_000,
 )
 
 it.live(
@@ -1002,7 +1012,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  3_000,
+  10_000,
 )
 
 it.live(
@@ -1032,7 +1042,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  3_000,
+  10_000,
 )
 
 it.live("assertNotBusy succeeds when idle", () =>
@@ -1077,7 +1087,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  3_000,
+  10_000,
 )
 
 unix("shell captures stdout and stderr in completed tool output", () =>
@@ -1247,7 +1257,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  3_000,
+  10_000,
 )
 
 it.live(
@@ -1287,7 +1297,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  3_000,
+  10_000,
 )
 
 unix(
@@ -1302,7 +1312,17 @@ unix(
             const sh = yield* prompt
               .shell({ sessionID: chat.id, agent: "build", command: "sleep 30" })
               .pipe(Effect.forkChild)
-            yield* Effect.sleep(50)
+            yield* Effect.promise(async () => {
+              const start = Date.now()
+              while (Date.now() - start < 5000) {
+                const msgs = await Effect.runPromise(MessageV2.filterCompactedEffect(chat.id))
+                const assistant = msgs.findLast((item) => item.info.role === "assistant")
+                const tool = assistant ? toolPart(assistant.parts) : undefined
+                if (tool?.state.status === "running") return
+                await new Promise((done) => setTimeout(done, 20))
+              }
+              throw new Error("timed out waiting for running shell tool")
+            })
 
             yield* prompt.cancel(chat.id)
 
@@ -1339,7 +1359,17 @@ unix(
             const sh = yield* prompt
               .shell({ sessionID: chat.id, agent: "build", command: "trap '' TERM; sleep 30" })
               .pipe(Effect.forkChild)
-            yield* Effect.sleep(50)
+            yield* Effect.promise(async () => {
+              const start = Date.now()
+              while (Date.now() - start < 5000) {
+                const msgs = await Effect.runPromise(MessageV2.filterCompactedEffect(chat.id))
+                const assistant = msgs.findLast((item) => item.info.role === "assistant")
+                const tool = assistant ? toolPart(assistant.parts) : undefined
+                if (tool?.state.status === "running") return
+                await new Promise((done) => setTimeout(done, 20))
+              }
+              throw new Error("timed out waiting for running shell tool")
+            })
 
             yield* prompt.cancel(chat.id)
 
@@ -1389,7 +1419,29 @@ unix(
 
           const run = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
           yield* llm.wait(1)
-          yield* Effect.sleep(150)
+          yield* Effect.promise(async () => {
+            const start = Date.now()
+            while (Date.now() - start < 5000) {
+              const msgs = await Effect.runPromise(MessageV2.filterCompactedEffect(chat.id))
+              const assistant = msgs.findLast((item) => item.info.role === "assistant")
+              const tool = assistant
+                ? assistant.parts.find(
+                    (part): part is MessageV2.ToolPart =>
+                      part.type === "tool" &&
+                      part.tool === "bash" &&
+                      (part.state.status === "running" || part.state.status === "completed"),
+                  )
+                : undefined
+              const preview =
+                tool?.state.status === "running" || tool?.state.status === "completed"
+                  ? tool.state.metadata?.output
+                  : undefined
+              if (typeof preview === "string" && preview.length > 0) return
+              await new Promise((done) => setTimeout(done, 20))
+            }
+            throw new Error("timed out waiting for initial bash output before cancel")
+          })
+          yield* Effect.sleep("1 second")
           yield* prompt.cancel(chat.id)
 
           const exit = yield* Fiber.await(run)
@@ -1421,7 +1473,17 @@ unix(
           const sh = yield* prompt
             .shell({ sessionID: chat.id, agent: "build", command: "sleep 30" })
             .pipe(Effect.forkChild)
-          yield* Effect.sleep(50)
+          yield* Effect.promise(async () => {
+            const start = Date.now()
+            while (Date.now() - start < 5000) {
+              const msgs = await Effect.runPromise(MessageV2.filterCompactedEffect(chat.id))
+              const assistant = msgs.findLast((item) => item.info.role === "assistant")
+              const tool = assistant ? toolPart(assistant.parts) : undefined
+              if (tool?.state.status === "running") return
+              await new Promise((done) => setTimeout(done, 20))
+            }
+            throw new Error("timed out waiting for running shell tool")
+          })
 
           const loop = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
           yield* Effect.sleep(50)

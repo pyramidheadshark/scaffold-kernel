@@ -359,6 +359,7 @@ describe("WorkflowRuntime cancel cascade", () => {
       Effect.fnUntraced(function* ({ llm }) {
         const runtime = yield* WorkflowRuntime.Service
         const session = yield* Session.Service
+        const registry = yield* ActorRegistry.Service
         const parent = yield* session.create({
           title: "wf cancel",
           permission: [{ permission: "*", pattern: "*", action: "allow" }],
@@ -369,7 +370,15 @@ describe("WorkflowRuntime cancel cascade", () => {
           `return await parallel([() => agent("a"), () => agent("b"), () => agent("c")])`,
         ].join("\n")
         const { runID } = yield* runtime.start({ script, sessionID: parent.id, parentActorID: "main", model: ref })
-        yield* Effect.sleep("250 millis") // let the fan-out spawn children
+        yield* Effect.promise(async () => {
+          const start = Date.now()
+          while (Date.now() - start < 5000) {
+            const children = await Effect.runPromise(registry.listBySession(parent.id))
+            if (children.some((actor) => actor.actorID !== "main")) return
+            await new Promise((done) => setTimeout(done, 20))
+          }
+          throw new Error("timed out waiting for workflow child actors before cancel")
+        })
         yield* runtime.cancel({ runID })
         const s = yield* runtime.status({ runID })
         expect(s.status).toBe("cancelled")

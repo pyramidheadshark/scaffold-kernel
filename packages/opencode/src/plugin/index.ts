@@ -245,22 +245,26 @@ export const layer = Layer.effect(
           $: typeof Bun === "undefined" ? undefined : Bun.$,
         }
 
-        for (const plugin of INTERNAL_PLUGINS) {
-          log.info("loading internal plugin", { name: plugin.name })
-          const init = yield* Effect.tryPromise({
-            try: () => plugin(input),
-            catch: (err) => {
-              log.error("failed to load internal plugin", { name: plugin.name, error: err })
-            },
-          }).pipe(Effect.option)
-          if (init._tag === "Some") {
-            hooks.push(init.value)
-            hooksWithMeta.push({
-              hook: init.value,
-              pluginName: plugin.name,
-              hookIDFor: (event: string) => `${plugin.name}#${event}`,
-            })
+        if (!Flag.MIMOCODE_DISABLE_DEFAULT_PLUGINS) {
+          for (const plugin of INTERNAL_PLUGINS) {
+            log.info("loading internal plugin", { name: plugin.name })
+            const init = yield* Effect.tryPromise({
+              try: () => plugin(input),
+              catch: (err) => {
+                log.error("failed to load internal plugin", { name: plugin.name, error: err })
+              },
+            }).pipe(Effect.option)
+            if (init._tag === "Some") {
+              hooks.push(init.value)
+              hooksWithMeta.push({
+                hook: init.value,
+                pluginName: plugin.name,
+                hookIDFor: (event: string) => `${plugin.name}#${event}`,
+              })
+            }
           }
+        } else {
+          log.info("skipping internal plugins", { count: INTERNAL_PLUGINS.length })
         }
 
         const plugins = Flag.MIMOCODE_PURE ? [] : (cfg.plugin_origins ?? [])

@@ -990,7 +990,7 @@ describe("Actor.spawn return-format injection (F21)", () => {
 
         yield* Deferred.await(result.outcome)
 
-        const msgs = yield* session.messages({ sessionID: result.sessionID })
+        const msgs = yield* session.messages({ sessionID: result.sessionID, agentID: "*" })
         const subAgentUser = msgs.find((m) => m.info.role === "user" && m.info.agentID === result.actorID)
         expect(subAgentUser).toBeDefined()
         const text = subAgentUser?.parts.find((p) => p.type === "text")?.text ?? ""
@@ -1027,7 +1027,7 @@ describe("Actor.spawn return-format injection (F21)", () => {
 
         yield* Deferred.await(result.outcome)
 
-        const msgs = yield* session.messages({ sessionID: result.sessionID })
+        const msgs = yield* session.messages({ sessionID: result.sessionID, agentID: "*" })
         const subAgentUser = msgs.find((m) => m.info.role === "user" && m.info.agentID === result.actorID)
         const text = subAgentUser?.parts.find((p) => p.type === "text")?.text ?? ""
         expect(text).not.toContain("Return format (required)")
@@ -1062,7 +1062,7 @@ describe("Actor.spawn return-format injection (F21)", () => {
 
         yield* Deferred.await(result.outcome)
 
-        const msgs = yield* session.messages({ sessionID: result.sessionID })
+        const msgs = yield* session.messages({ sessionID: result.sessionID, agentID: "*" })
         const subAgentUser = msgs.find((m) => m.info.role === "user" && m.info.agentID === result.actorID)
         const text = subAgentUser?.parts.find((p) => p.type === "text")?.text ?? ""
         expect(text).not.toContain("Return format (required)")

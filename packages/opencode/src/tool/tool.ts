@@ -94,19 +94,40 @@ function wrap<Parameters extends z.ZodType, Result extends Metadata>(
           ...(ctx.callID ? { "tool.call_id": ctx.callID } : {}),
         }
         return Effect.gen(function* () {
-          yield* Effect.try({
-            try: () => toolInfo.parameters.parse(args),
-            catch: (error) => {
-              if (error instanceof z.ZodError && toolInfo.formatValidationError) {
-                return new Error(toolInfo.formatValidationError(error), { cause: error })
+          let effectiveArgs = args
+          const parsed = toolInfo.parameters.safeParse(args)
+          if (parsed.success) {
+            effectiveArgs = parsed.data
+          } else {
+            const recovered = id === "actor" ? toolInfo.shell?.recover?.(args as unknown) : undefined
+            if (recovered !== undefined) {
+              const reparsed = toolInfo.parameters.safeParse(recovered)
+              if (reparsed.success) {
+                effectiveArgs = reparsed.data
+              } else {
+                const error = reparsed.error
+                return yield* Effect.fail(
+                  error instanceof z.ZodError && toolInfo.formatValidationError
+                    ? new Error(toolInfo.formatValidationError(error), { cause: error })
+                    : new Error(
+                        `The ${id} tool was called with invalid arguments: ${error}.\nPlease rewrite the input so it satisfies the expected schema.`,
+                        { cause: error },
+                      ),
+                )
               }
-              return new Error(
-                `The ${id} tool was called with invalid arguments: ${error}.\nPlease rewrite the input so it satisfies the expected schema.`,
-                { cause: error },
+            } else {
+              const error = parsed.error
+              return yield* Effect.fail(
+                error instanceof z.ZodError && toolInfo.formatValidationError
+                  ? new Error(toolInfo.formatValidationError(error), { cause: error })
+                  : new Error(
+                      `The ${id} tool was called with invalid arguments: ${error}.\nPlease rewrite the input so it satisfies the expected schema.`,
+                      { cause: error },
+                    ),
               )
-            },
-          })
-          const result = yield* execute(args, ctx)
+            }
+          }
+          const result = yield* execute(effectiveArgs, ctx)
           if (result.metadata.truncated !== undefined) {
             return result
           }
