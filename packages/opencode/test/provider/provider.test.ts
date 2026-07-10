@@ -1793,7 +1793,7 @@ test("closest checks multiple query terms in order", async () => {
   })
 })
 
-test("model limit defaults to DEFAULT_CONTEXT_WINDOW (200K) when not specified (F41)", async () => {
+test("model limit defaults to DEFAULT_CONTEXT_WINDOW (1M) when not specified (F41)", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -1824,7 +1824,7 @@ test("model limit defaults to DEFAULT_CONTEXT_WINDOW (200K) when not specified (
     fn: async () => {
       const providers = await list()
       const model = providers[ProviderID.make("no-limit")].models["model"]
-      expect(model.limit.context).toBe(200_000)
+      expect(model.limit.context).toBe(1_000_000)
       expect(model.limit.output).toBe(0)
     },
   })
@@ -2612,7 +2612,7 @@ test("plugin config enabled and disabled providers are honored", async () => {
   })
 })
 
-test("opencode and opencode-go providers are disabled by MimoFreeAuthPlugin", async () => {
+test("scaffold MimoFreeAuthPlugin stub leaves explicit opencode provider enabled", async () => {
   await using base = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -2636,13 +2636,9 @@ test("opencode and opencode-go providers are disabled by MimoFreeAuthPlugin", as
     fn: async () => list(),
   })
 
-  // MimoFreeAuthPlugin always pushes opencode/opencode-go into disabled_providers,
-  // so they should not appear even when the user supplies an apiKey or auth record.
-  expect(opencodeProviderPresent(providers)).toBe(false)
+  // In Scaffold builds MimoFreeAuthPlugin is a no-op stub; it does not rewrite
+  // disabled_providers or inject a Xiaomi-specific free provider.
+  expect(opencodeProviderPresent(providers)).toBe(true)
   expect(providers[ProviderID.make("opencode-go")]).toBeUndefined()
-  // The replacement free provider should be present.
-  expect(providers[ProviderID.make("mimo")]).toBeDefined()
-  expect(providers[ProviderID.make("mimo")].models[ModelID.make("mimo-auto")]).toBeDefined()
-  expect(providers[ProviderID.make("mimo")].models[ModelID.make("mimo-auto")].limit.context).toBe(1_000_000)
-  expect(providers[ProviderID.make("mimo")].models[ModelID.make("mimo-auto")].limit.output).toBe(128_000)
+  expect(providers[ProviderID.make("mimo")]).toBeUndefined()
 })
