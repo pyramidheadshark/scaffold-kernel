@@ -2,12 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { Inbox } from "../../src/inbox"
 import { MAX_DRAIN_PER_TURN } from "../../src/inbox/inbox"
+import { InboxTable } from "../../src/inbox/inbox.sql"
 import { ActorRegistry } from "../../src/actor/registry"
 import { Session } from "../../src/session"
 import { Bus } from "../../src/bus"
 import { Instance } from "../../src/project/instance"
 import { MessageID, SessionID } from "../../src/session/schema"
 import { ProviderID, ModelID } from "../../src/provider/schema"
+import { Database } from "../../src/storage"
 import { tmpdir } from "../fixture/fixture"
 
 const base = Layer.mergeAll(Session.defaultLayer, ActorRegistry.defaultLayer, Bus.defaultLayer)
@@ -200,17 +202,25 @@ describe("Inbox.drain in loop (Plan 2 / Task 7)", () => {
 
       const total = MAX_DRAIN_PER_TURN + 5
       await rt.runPromise(
-        Inbox.Service.use((inbox) =>
-          Effect.all(
-            Array.from({ length: total }, (_, i) =>
-              inbox.send({
-                receiverSessionID: session.id,
-                receiverActorID: "actor-cap",
-                content: `msg-${i}`,
-              }),
-            ),
-          ),
-        ),
+        Effect.sync(() => {
+          const createdAt = Date.now()
+          Database.use((db) => {
+            db.insert(InboxTable)
+              .values(
+                Array.from({ length: total }, (_, i) => ({
+                  id: `inbox_${i}`,
+                  receiver_session_id: session.id,
+                  receiver_actor_id: "actor-cap",
+                  sender_session_id: null,
+                  sender_actor_id: null,
+                  type: "text",
+                  content: { text: `msg-${i}` },
+                  created_at: createdAt + i,
+                })),
+              )
+              .run()
+          })
+        }),
       )
 
       const first = await rt.runPromise(

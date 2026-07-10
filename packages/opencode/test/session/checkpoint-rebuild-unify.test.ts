@@ -1,5 +1,6 @@
 import { afterEach, describe, expect } from "bun:test"
 import { Effect, Layer } from "effect"
+import * as fs from "fs/promises"
 import { Bus } from "../../src/bus"
 import { Config } from "../../src/config"
 import { Memory } from "../../src/memory"
@@ -74,7 +75,11 @@ describe("SessionCheckpoint.insertRebuildBoundary", () => {
       Effect.gen(function* () {
         const ssn = yield* SessionNs.Service
         const cp = yield* SessionCheckpoint.Service
+        const memory = yield* Memory.Service
         const info = yield* ssn.create({})
+        const root = yield* memory.root()
+        yield* Effect.promise(() => fs.rm(root, { recursive: true, force: true }))
+        yield* Effect.promise(() => fs.mkdir(root, { recursive: true }))
 
         const m1 = yield* Effect.promise(() => seedUserMessage(info.id, "turn one"))
         const _m2 = yield* Effect.promise(() => seedUserMessage(info.id, "turn two"))

@@ -36,8 +36,12 @@ describe("renderRebuildContext v3", () => {
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const cp = yield* SessionCheckpoint.Service
+        const memory = yield* Memory.Service
         const session = yield* Session.Service
         const sess = yield* session.create({ title: "Test" })
+        const root = yield* memory.root()
+        yield* Effect.promise(() => fs.rm(root, { recursive: true, force: true }))
+        yield* Effect.promise(() => fs.mkdir(root, { recursive: true }))
         const out = yield* cp.renderRebuildContext(sess.id)
         expect(out).toBe("")
       }),
