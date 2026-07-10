@@ -1087,7 +1087,6 @@ const layer: Layer.Layer<
       Effect.gen(function* () {
         using _ = log.time("state")
         const bridge = yield* EffectBridge.make()
-        const cfg = yield* config.get()
         const modelsDev = yield* Effect.promise(() => ModelsDev.get())
         const database = mapValues(modelsDev, fromModelsDevProvider)
 
@@ -1125,8 +1124,9 @@ const layer: Layer.Layer<
           providers[providerID] = mergeDeep(match, provider)
         }
 
-        // load plugins first so config() hook runs before reading cfg.provider
+        // load plugins first so config() hook runs before reading provider-related config
         const plugins = yield* plugin.list()
+        const cfg = yield* config.get()
 
         // now read config providers - includes any modifications from plugin config() hook
         const configProviders = Object.entries(cfg.provider ?? {})

@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect } from "bun:test"
+import { afterEach, describe, expect } from "bun:test"
 import { Effect, Layer } from "effect"
 import { Agent } from "../../src/agent/agent"
 import { Bus } from "../../src/bus"
@@ -59,25 +59,32 @@ function parseOutput(output: string): CancelResponse {
 // test (with fiber interruption) lives in test/actor/spawn.test.ts.
 const cancelled: Array<{ sessionID: SessionID; actorID: string; mode: "graceful" | "forced" }> = []
 let installedRegistry: ActorRegistry.Interface | undefined
-let spawnRefToken: symbol | undefined
-beforeAll(() => {
-  spawnRefToken = spawnRef.install({
-    spawn: () => Effect.die("spawn not used in cancel tests"),
-    cancel: (sessionID, actorID, mode) =>
-      Effect.gen(function* () {
-        cancelled.push({ sessionID, actorID, mode })
-        if (installedRegistry) {
-          yield* installedRegistry.updateStatus(sessionID, actorID, { status: "idle", lastOutcome: "cancelled" }).pipe(Effect.ignore)
-        }
-      }),
-    getForkContext: () => Effect.succeed(undefined),
-  } satisfies ActorInterface)
-})
 
-afterAll(() => {
-  if (spawnRefToken) spawnRef.release(spawnRefToken)
-  installedRegistry = undefined
-})
+function withStubbedSpawnRef<A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> {
+  return Effect.acquireUseRelease(
+    Effect.sync(() =>
+      spawnRef.install({
+        spawn: () => Effect.die("spawn not used in cancel tests"),
+        cancel: (sessionID, actorID, mode) =>
+          Effect.gen(function* () {
+            cancelled.push({ sessionID, actorID, mode })
+            if (installedRegistry) {
+              yield* installedRegistry
+                .updateStatus(sessionID, actorID, { status: "idle", lastOutcome: "cancelled" })
+                .pipe(Effect.ignore)
+            }
+          }),
+        getForkContext: () => Effect.succeed(undefined),
+      } satisfies ActorInterface),
+    ),
+    () => self,
+    (token) =>
+      Effect.sync(() => {
+        spawnRef.release(token)
+        installedRegistry = undefined
+      }),
+  )
+}
 
 function ctxFor(sessionID: SessionID) {
   return {
@@ -104,41 +111,43 @@ describe("actor tool — cancel action", () => {
   it.live(
     "cancel on running task signals graceful and updates registry",
     provideTmpdirInstance(() =>
-      Effect.gen(function* () {
-        cancelled.length = 0
-        const sessions = yield* Session.Service
-        const registry = yield* ActorRegistry.Service
-        installedRegistry = registry
-        const chat = yield* sessions.create({ title: "chat" })
-        const child = yield* sessions.create({ parentID: chat.id, title: "running (@general subagent)" })
-        yield* registry.register({
-          sessionID: child.id,
-          actorID: child.id,
-          mode: "peer",
-          agent: "general",
-          description: "running",
-          contextMode: "none",
-          background: true,
-          lifecycle: "ephemeral",
-        })
-        yield* registry.updateStatus(child.id, child.id, { status: "running" })
+      withStubbedSpawnRef(
+        Effect.gen(function* () {
+          cancelled.length = 0
+          const sessions = yield* Session.Service
+          const registry = yield* ActorRegistry.Service
+          installedRegistry = registry
+          const chat = yield* sessions.create({ title: "chat" })
+          const child = yield* sessions.create({ parentID: chat.id, title: "running (@general subagent)" })
+          yield* registry.register({
+            sessionID: child.id,
+            actorID: child.id,
+            mode: "peer",
+            agent: "general",
+            description: "running",
+            contextMode: "none",
+            background: true,
+            lifecycle: "ephemeral",
+          })
+          yield* registry.updateStatus(child.id, child.id, { status: "running" })
 
-        const { ctx } = ctxFor(chat.id)
-        const tool = yield* ActorTool
-        const def = yield* tool.init()
-        const result = yield* def.execute({ operation: { action: "cancel", actor_id: child.id } }, ctx)
+          const { ctx } = ctxFor(chat.id)
+          const tool = yield* ActorTool
+          const def = yield* tool.init()
+          const result = yield* def.execute({ operation: { action: "cancel", actor_id: child.id } }, ctx)
 
-        const snap = parseOutput(result.output)
-        expect(snap.status).toBe("cancelled")
-        expect(snap.actor_id).toBe(child.id)
-        expect(cancelled).toHaveLength(1)
-        expect(cancelled[0]?.mode).toBe("graceful")
-        expect(cancelled[0]?.actorID).toBe(child.id)
+          const snap = parseOutput(result.output)
+          expect(snap.status).toBe("cancelled")
+          expect(snap.actor_id).toBe(child.id)
+          expect(cancelled).toHaveLength(1)
+          expect(cancelled[0]?.mode).toBe("graceful")
+          expect(cancelled[0]?.actorID).toBe(child.id)
 
-        const entry = yield* registry.get(child.id, child.id)
-        expect(entry?.status).toBe("idle")
-        expect(entry?.lastOutcome).toBe("cancelled")
-      }),
+          const entry = yield* registry.get(child.id, child.id)
+          expect(entry?.status).toBe("idle")
+          expect(entry?.lastOutcome).toBe("cancelled")
+        }),
+      ),
     ),
   )
 
@@ -156,56 +165,60 @@ describe("actor tool — cancel action", () => {
   it.live(
     "cancel missing actor_id fails",
     provideTmpdirInstance(() =>
-      Effect.gen(function* () {
-        const sessions = yield* Session.Service
-        const chat = yield* sessions.create({ title: "chat" })
-        const { ctx } = ctxFor(chat.id)
-        const tool = yield* ActorTool
-        const def = yield* tool.init()
+      withStubbedSpawnRef(
+        Effect.gen(function* () {
+          const sessions = yield* Session.Service
+          const chat = yield* sessions.create({ title: "chat" })
+          const { ctx } = ctxFor(chat.id)
+          const tool = yield* ActorTool
+          const def = yield* tool.init()
 
-        // cast: the schema rejects this shape at parse time; the cast is the only
-        // way to drive that failure path through tool.execute() in tests.
-        const result = yield* def.execute({ operation: { action: "cancel" } } as any, ctx).pipe(Effect.exit)
+          // cast: the schema rejects this shape at parse time; the cast is the only
+          // way to drive that failure path through tool.execute() in tests.
+          const result = yield* def.execute({ operation: { action: "cancel" } } as any, ctx).pipe(Effect.exit)
 
-        expect(result._tag).toBe("Failure")
-      }),
+          expect(result._tag).toBe("Failure")
+        }),
+      ),
     ),
   )
 
   it.live(
     "cancel on already-terminal task returns current status (idempotent)",
     provideTmpdirInstance(() =>
-      Effect.gen(function* () {
-        cancelled.length = 0
-        const sessions = yield* Session.Service
-        const registry = yield* ActorRegistry.Service
-        const chat = yield* sessions.create({ title: "chat" })
-        const child = yield* sessions.create({ parentID: chat.id, title: "done (@general subagent)" })
-        yield* registry.register({
-          sessionID: child.id,
-          actorID: child.id,
-          mode: "peer",
-          agent: "general",
-          description: "done",
-          contextMode: "none",
-          background: true,
-          lifecycle: "ephemeral",
-        })
-        yield* registry.updateStatus(child.id, child.id, { status: "idle", lastOutcome: "success" })
+      withStubbedSpawnRef(
+        Effect.gen(function* () {
+          cancelled.length = 0
+          const sessions = yield* Session.Service
+          const registry = yield* ActorRegistry.Service
+          const chat = yield* sessions.create({ title: "chat" })
+          const child = yield* sessions.create({ parentID: chat.id, title: "done (@general subagent)" })
+          yield* registry.register({
+            sessionID: child.id,
+            actorID: child.id,
+            mode: "peer",
+            agent: "general",
+            description: "done",
+            contextMode: "none",
+            background: true,
+            lifecycle: "ephemeral",
+          })
+          yield* registry.updateStatus(child.id, child.id, { status: "idle", lastOutcome: "success" })
 
-        const { ctx } = ctxFor(chat.id)
-        const tool = yield* ActorTool
-        const def = yield* tool.init()
-        const result = yield* def.execute({ operation: { action: "cancel", actor_id: child.id } }, ctx)
+          const { ctx } = ctxFor(chat.id)
+          const tool = yield* ActorTool
+          const def = yield* tool.init()
+          const result = yield* def.execute({ operation: { action: "cancel", actor_id: child.id } }, ctx)
 
-        const snap = parseOutput(result.output)
-        expect(snap.status).toBe("idle")
-        expect(cancelled).toHaveLength(0)
+          const snap = parseOutput(result.output)
+          expect(snap.status).toBe("idle")
+          expect(cancelled).toHaveLength(0)
 
-        const entry = yield* registry.get(child.id, child.id)
-        expect(entry?.status).toBe("idle")
-        expect(entry?.lastOutcome).toBe("success")
-      }),
+          const entry = yield* registry.get(child.id, child.id)
+          expect(entry?.status).toBe("idle")
+          expect(entry?.lastOutcome).toBe("success")
+        }),
+      ),
     ),
   )
 

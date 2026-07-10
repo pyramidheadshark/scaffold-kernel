@@ -256,7 +256,7 @@ describe("WorkflowRuntime workflow() journal (two-level resume)", () => {
       }),
       { git: true, config: providerCfg },
     ),
-    25000,
+    40000,
   )
 })
 

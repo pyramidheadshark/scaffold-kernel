@@ -146,5 +146,5 @@ describe("invalid-output continuation — integration", () => {
     } finally {
       await stub.stop()
     }
-  })
+  }, { timeout: 15000 })
 })

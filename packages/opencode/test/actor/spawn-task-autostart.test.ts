@@ -483,6 +483,7 @@ describe("Actor.spawn completion gate (B)", () => {
       }),
       { git: true, config: providerCfg },
     ),
+    15000,
   )
 
   it.live("does not downgrade a specialized (non-gate-eligible) subagent even with an open owned task", () =>

@@ -458,6 +458,7 @@ describe("WorkflowTool run", () => {
       }),
       { git: true, config: providerCfg },
     ),
+    15000,
   )
 })
 

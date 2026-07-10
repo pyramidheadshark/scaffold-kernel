@@ -329,7 +329,6 @@ describe("classifier routing — integration", () => {
     await using tmp = await tmpdir({ git: true })
     const stub = startScriptedLLMServer([{ lines: textStopResponse("plain text from a fork agent") }])
     const forkActorID = "explore-fork-1"
-    const prevSpawnRef = spawnRef.current
     try {
       await writeConfig(tmp.path, stub.origin)
       await Instance.provide({
@@ -368,40 +367,41 @@ describe("classifier routing — integration", () => {
                 model: { providerID: ProviderID.make("alibaba"), modelID: ModelID.make("qwen-plus") },
               }
                const spawnToken = spawnRef.install({
-                 getForkContext: (id: string) => Effect.succeed(id === forkActorID ? forkCtx : undefined),
-                 spawn: () => Effect.die("spawn not used in fork-gate test"),
-                 cancel: () => Effect.die("cancel not used in fork-gate test"),
-               } as unknown as NonNullable<typeof spawnRef.current>)
+                  getForkContext: (id: string) => Effect.succeed(id === forkActorID ? forkCtx : undefined),
+                  spawn: () => Effect.die("spawn not used in fork-gate test"),
+                  cancel: () => Effect.die("cancel not used in fork-gate test"),
+                } as unknown as NonNullable<typeof spawnRef.current>)
+               try {
+                 const result = yield* prompt.prompt({
+                   sessionID: session.id,
+                   agent: "build",
+                   agentID: forkActorID,
+                   parts: [{ type: "text", text: "Answer in the requested schema." }],
+                   format: JSON_SCHEMA,
+                 })
 
-              const result = yield* prompt.prompt({
-                sessionID: session.id,
-                agent: "build",
-                agentID: forkActorID,
-                parts: [{ type: "text", text: "Answer in the requested schema." }],
-                format: JSON_SCHEMA,
-              })
+                 // Prove we went through the FORK branch, not the main path: the fork
+                 // branch sends `forkCtx.system` verbatim as the request system, whereas
+                 // the main path would build the full system prompt. Without this guard
+                 // a non-shared ActorRegistry instance (isForkAgent=false) would fall to
+                 // the main gate and also write StructuredOutputError — a false pass.
+                 const systemMsg = stub.captures[0]?.messages.find((m) => m.role === "system")
+                 expect(JSON.stringify(systemMsg?.content ?? "")).toContain("fork-system-prompt")
 
-              // Prove we went through the FORK branch, not the main path: the fork
-              // branch sends `forkCtx.system` verbatim as the request system, whereas
-              // the main path would build the full system prompt. Without this guard
-              // a non-shared ActorRegistry instance (isForkAgent=false) would fall to
-              // the main gate and also write StructuredOutputError — a false pass.
-              const systemMsg = stub.captures[0]?.messages.find((m) => m.role === "system")
-              expect(JSON.stringify(systemMsg?.content ?? "")).toContain("fork-system-prompt")
-
-              // Reaching prompt.ts:2050 in the fork branch: classifier returns a
-              // non-`continue` result for the plain-text stop, and json_schema mode
-              // makes the fork gate write StructuredOutputError.
-              expect(result.info.role).toBe("assistant")
-               if (result.info.role === "assistant") {
-                 expect(result.info.error?.name).toBe("StructuredOutputError")
+                 // Reaching prompt.ts:2050 in the fork branch: classifier returns a
+                 // non-`continue` result for the plain-text stop, and json_schema mode
+                 // makes the fork gate write StructuredOutputError.
+                 expect(result.info.role).toBe("assistant")
+                 if (result.info.role === "assistant") {
+                   expect(result.info.error?.name).toBe("StructuredOutputError")
+                 }
+               } finally {
+                 spawnRef.release(spawnToken)
                }
-               spawnRef.release(spawnToken)
-             }),
-           ),
-       })
+              }),
+            ),
+        })
     } finally {
-      spawnRef.current = prevSpawnRef
       await stub.stop()
     }
   })
@@ -410,7 +410,6 @@ describe("classifier routing — integration", () => {
     await using tmp = await tmpdir({ git: true })
     const stub = startScriptedLLMServer([{ lines: contentFilterResponse() }])
     const forkActorID = "explore-fork-cf"
-    const prevSpawnRef = spawnRef.current
     try {
       await writeConfig(tmp.path, stub.origin)
       await Instance.provide({
@@ -444,34 +443,35 @@ describe("classifier routing — integration", () => {
                 model: { providerID: ProviderID.make("alibaba"), modelID: ModelID.make("qwen-plus") },
               }
                const spawnToken = spawnRef.install({
-                 getForkContext: (id: string) => Effect.succeed(id === forkActorID ? forkCtx : undefined),
-                 spawn: () => Effect.die("spawn not used in fork content-filter test"),
-                 cancel: () => Effect.die("cancel not used in fork content-filter test"),
-               } as unknown as NonNullable<typeof spawnRef.current>)
+                  getForkContext: (id: string) => Effect.succeed(id === forkActorID ? forkCtx : undefined),
+                  spawn: () => Effect.die("spawn not used in fork content-filter test"),
+                  cancel: () => Effect.die("cancel not used in fork content-filter test"),
+                } as unknown as NonNullable<typeof spawnRef.current>)
+               try {
+                 const result = yield* prompt.prompt({
+                   sessionID: session.id,
+                   agent: "build",
+                   agentID: forkActorID,
+                   parts: [{ type: "text", text: "Answer in the requested schema." }],
+                   format: JSON_SCHEMA,
+                 })
 
-              const result = yield* prompt.prompt({
-                sessionID: session.id,
-                agent: "build",
-                agentID: forkActorID,
-                parts: [{ type: "text", text: "Answer in the requested schema." }],
-                format: JSON_SCHEMA,
-              })
+                 // Prove we went through the FORK branch (see sibling fork test).
+                 const systemMsg = stub.captures[0]?.messages.find((m) => m.role === "system")
+                 expect(JSON.stringify(systemMsg?.content ?? "")).toContain("fork-system-prompt")
 
-              // Prove we went through the FORK branch (see sibling fork test).
-              const systemMsg = stub.captures[0]?.messages.find((m) => m.role === "system")
-              expect(JSON.stringify(systemMsg?.content ?? "")).toContain("fork-system-prompt")
-
-              // filtered handled before the fork json_schema gate ⇒ ContentFilterError.
-              expect(result.info.role).toBe("assistant")
-               if (result.info.role === "assistant") {
-                 expect(result.info.error?.name).toBe("ContentFilterError")
+                 // filtered handled before the fork json_schema gate ⇒ ContentFilterError.
+                 expect(result.info.role).toBe("assistant")
+                 if (result.info.role === "assistant") {
+                   expect(result.info.error?.name).toBe("ContentFilterError")
+                 }
+               } finally {
+                 spawnRef.release(spawnToken)
                }
-               spawnRef.release(spawnToken)
-             }),
-           ),
-       })
+              }),
+            ),
+        })
     } finally {
-      spawnRef.current = prevSpawnRef
       await stub.stop()
     }
   })

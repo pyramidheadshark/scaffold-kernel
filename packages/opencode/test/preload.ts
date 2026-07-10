@@ -31,9 +31,11 @@ afterAll(async () => {
     })
   }
 
-  // Windows can keep SQLite WAL handles alive until GC finalizers run, so we
-  // force GC and retry teardown to avoid flaky EBUSY in test cleanup.
-  await rm(30)
+  // Full-package runs can spend >5s removing the entire per-PID temp tree, which
+  // Bun reports as an unnamed hook timeout on the last test file. Fire cleanup in
+  // the background instead: resource closure still happens synchronously, while the
+  // temp-tree deletion remains best-effort and no longer gates suite completion.
+  void rm(30).catch(() => undefined)
 })
 
 process.env["XDG_DATA_HOME"] = path.join(dir, "share")

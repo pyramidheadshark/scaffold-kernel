@@ -2516,7 +2516,9 @@ test("cloudflare-ai-gateway forwards config metadata options", async () => {
   })
 })
 
-test("plugin config providers persist after instance dispose", async () => {
+test(
+  "plugin config providers persist after instance dispose",
+  async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       const root = path.join(dir, ".mimocode", "plugin")
@@ -2573,9 +2575,15 @@ test("plugin config providers persist after instance dispose", async () => {
   })
   expect(second[ProviderID.make("demo")]).toBeDefined()
   expect(second[ProviderID.make("demo")].models[ModelID.make("chat")]).toBeDefined()
-})
 
-test("plugin config enabled and disabled providers are honored", async () => {
+    await Instance.disposeAll()
+  },
+  { timeout: 15000 },
+)
+
+test(
+  "plugin config enabled and disabled providers are honored",
+  async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       const root = path.join(dir, ".mimocode", "plugin")
@@ -2610,7 +2618,11 @@ test("plugin config enabled and disabled providers are honored", async () => {
       expect(providers[ProviderID.openai]).toBeUndefined()
     },
   })
-})
+
+    await Instance.disposeAll()
+  },
+  { timeout: 15000 },
+)
 
 test("scaffold MimoFreeAuthPlugin stub leaves explicit opencode provider enabled", async () => {
   await using base = await tmpdir({

@@ -5,7 +5,7 @@ export interface LateBoundRef<T> {
 }
 
 export function createLateBoundRef<T>(): LateBoundRef<T> {
-  const stack: Array<{ token: symbol; value: T }> = []
+  const stack: Array<{ token: symbol; value: T | undefined }> = []
   let current: T | undefined = undefined
 
   return {

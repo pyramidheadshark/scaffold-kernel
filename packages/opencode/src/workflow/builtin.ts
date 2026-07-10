@@ -9,7 +9,6 @@ export * as BuiltinWorkflow from "./builtin"
 // this single import. A `Bun.file(...).text()` fallback is intentionally NOT
 // used: it reads the real filesystem at runtime, which does not exist inside a
 // compiled standalone binary.
-// @ts-expect-error TS1192: import-attribute text loader, resolved by Bun not tsgo
 import DEEP_RESEARCH_SCRIPT from "./builtin/deep-research.txt" with { type: "text" }
 import { parseMeta } from "./meta"
 
