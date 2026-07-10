@@ -1,5 +1,6 @@
 import { describe, expect, afterEach } from "bun:test"
 import { Effect } from "effect"
+import path from "node:path"
 import { Session } from "../../src/session"
 import { Instance } from "../../src/project/instance"
 import { provideTmpdirServer } from "../fixture/fixture"
@@ -172,6 +173,96 @@ describe("WorkflowRuntime convergence (scout drives fan-out)", () => {
 
   it.live("2 todo → 1 scout + 2 workers spawned (a re-run with fewer undone units does less work)", () =>
     runWithTodo(["a", "b"], 3),
+  )
+})
+
+describe("WorkflowRuntime external workflow snapshot bridge", () => {
+  it.live("status prefers a valid external snapshot over internal currentPhase", () =>
+    provideTmpdirServer(
+      Effect.fnUntraced(function* ({ dir }) {
+        const runtime = yield* WorkflowRuntime.Service
+        const session = yield* Session.Service
+        const parent = yield* session.create({
+          title: "wf external snapshot",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+        const snapshotFile = path.join(dir, "workflow.json")
+        yield* Effect.promise(() =>
+          Bun.write(
+            snapshotFile,
+            JSON.stringify({
+              version: 1,
+              source: "external-provider",
+              currentPhase: "external-phase",
+              topLevelStep: "External step",
+              blocking: true,
+              blockingGates: ["G5"],
+              nextAction: { title: "Unblock", reason: "Need implementation" },
+              readinessVerdict: "blocked",
+            }),
+          ),
+        )
+        const previous = process.env["MIMOCODE_WORKFLOW_STATE_FILE"]
+        try {
+          process.env["MIMOCODE_WORKFLOW_STATE_FILE"] = snapshotFile
+          const script = [
+            `export const meta = { name: "t", description: "d" }`,
+            `phase("internal-phase")`,
+            `return "ok"`,
+          ].join("\n")
+          const { runID } = yield* runtime.start({ script, sessionID: parent.id, parentActorID: "main" })
+          const outcome = yield* runtime.wait({ runID })
+          expect(outcome.status).toBe("completed")
+          const status = yield* runtime.status({ runID })
+          expect(status.currentPhase).toBe("external-phase")
+          expect(status.topLevelStep).toBe("External step")
+          expect(status.blocking).toBe(true)
+          expect(status.blockingGates).toEqual(["G5"])
+          expect(status.nextAction).toEqual({ title: "Unblock", reason: "Need implementation" })
+          expect(status.readinessVerdict).toBe("blocked")
+          expect(status.workflowSource).toBe("external-provider")
+        } finally {
+          if (previous === undefined) delete process.env["MIMOCODE_WORKFLOW_STATE_FILE"]
+          else process.env["MIMOCODE_WORKFLOW_STATE_FILE"] = previous
+        }
+      }),
+      { git: true, config: providerCfg },
+    ),
+  )
+
+  it.live("status falls back to internal currentPhase when external snapshot is invalid", () =>
+    provideTmpdirServer(
+      Effect.fnUntraced(function* ({ dir }) {
+        const runtime = yield* WorkflowRuntime.Service
+        const session = yield* Session.Service
+        const parent = yield* session.create({
+          title: "wf external snapshot fallback",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+        const snapshotFile = path.join(dir, "workflow-invalid.json")
+        yield* Effect.promise(() => Bun.write(snapshotFile, JSON.stringify({ version: 1, source: 42, blocking: true })))
+        const previous = process.env["MIMOCODE_WORKFLOW_STATE_FILE"]
+        try {
+          process.env["MIMOCODE_WORKFLOW_STATE_FILE"] = snapshotFile
+          const script = [
+            `export const meta = { name: "t", description: "d" }`,
+            `phase("internal-phase")`,
+            `return "ok"`,
+          ].join("\n")
+          const { runID } = yield* runtime.start({ script, sessionID: parent.id, parentActorID: "main" })
+          const outcome = yield* runtime.wait({ runID })
+          expect(outcome.status).toBe("completed")
+          const status = yield* runtime.status({ runID })
+          expect(status.currentPhase).toBe("internal-phase")
+          expect(status.workflowSource).toBeUndefined()
+          expect(status.topLevelStep).toBeUndefined()
+        } finally {
+          if (previous === undefined) delete process.env["MIMOCODE_WORKFLOW_STATE_FILE"]
+          else process.env["MIMOCODE_WORKFLOW_STATE_FILE"] = previous
+        }
+      }),
+      { git: true, config: providerCfg },
+    ),
   )
 })
 

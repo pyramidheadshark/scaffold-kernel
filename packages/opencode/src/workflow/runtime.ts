@@ -15,6 +15,7 @@ import { Identifier } from "@/id/id"
 import type { SessionID } from "@/session/schema"
 import type { ProviderID, ModelID } from "@/provider/schema"
 import { parseMeta } from "./meta"
+import { loadExternalWorkflowSnapshot, type ExternalWorkflowSnapshot } from "./external-workflow-state"
 import { evalScript, type HostFn } from "./sandbox"
 import { makeFileHooks, resolveInWorkspace } from "./workspace"
 import { isInlineScript, resolveWorkflowScript } from "./resolve"
@@ -42,6 +43,18 @@ const DEFAULT_MAX_CONCURRENT = 16
 const WORKFLOW_STRUCTURAL_ERROR = "WorkflowStructuralError"
 
 type RunStatus = "running" | "completed" | "failed" | "cancelled"
+
+type WorkflowStatus = {
+  status: RunStatus | "unknown"
+  agentCount: number
+  currentPhase?: string
+  topLevelStep?: string
+  blocking?: boolean
+  blockingGates?: string[]
+  nextAction?: ExternalWorkflowSnapshot["nextAction"]
+  readinessVerdict?: string
+  workflowSource?: string
+}
 
 export type RunOutcome =
   | { status: "completed"; result: unknown }
@@ -130,9 +143,7 @@ interface AgentOpts {
 
 export interface Interface {
   readonly start: (input: StartInput) => Effect.Effect<{ runID: string }>
-  readonly status: (input: {
-    runID: string
-  }) => Effect.Effect<{ status: RunStatus | "unknown"; agentCount: number; currentPhase?: string }>
+  readonly status: (input: { runID: string }) => Effect.Effect<WorkflowStatus>
   readonly wait: (input: { runID: string; timeoutMs?: number }) => Effect.Effect<RunOutcome>
   readonly cancel: (input: { runID: string }) => Effect.Effect<void>
   readonly list: (input?: { sessionID?: SessionID }) => Effect.Effect<RunSummary[]>
@@ -1105,10 +1116,21 @@ export const layer = Layer.effect(
     const status = Effect.fn("WorkflowRuntime.status")(function* (input: { runID: string }) {
       const entry = runs.get(input.runID)
       if (!entry) return { status: "unknown" as const, agentCount: 0 }
+      const external = yield* Effect.promise(() => loadExternalWorkflowSnapshot(process.env["MIMOCODE_WORKFLOW_STATE_FILE"]))
       return {
         status: entry.status,
         agentCount: entry.agentCount,
-        ...(entry.currentPhase !== undefined ? { currentPhase: entry.currentPhase } : {}),
+        ...(external?.source !== undefined ? { workflowSource: external.source } : {}),
+        ...(external?.currentPhase !== undefined
+          ? { currentPhase: external.currentPhase }
+          : entry.currentPhase !== undefined
+            ? { currentPhase: entry.currentPhase }
+            : {}),
+        ...(external?.topLevelStep !== undefined ? { topLevelStep: external.topLevelStep } : {}),
+        ...(external?.blocking !== undefined ? { blocking: external.blocking } : {}),
+        ...(external?.blockingGates !== undefined ? { blockingGates: external.blockingGates } : {}),
+        ...(external?.nextAction !== undefined ? { nextAction: external.nextAction } : {}),
+        ...(external?.readinessVerdict !== undefined ? { readinessVerdict: external.readinessVerdict } : {}),
       }
     })
 
