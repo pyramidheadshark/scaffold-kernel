@@ -122,7 +122,7 @@ export const AppLayer = Layer.suspend(() =>
   ).pipe(Layer.provideMerge(Observability.layer), Layer.provideMerge(BashInteractive.defaultLayer)),
 )
 
-const rt = ManagedRuntime.make(AppLayer, { memoMap })
+const rt = ManagedRuntime.make(AppLayer as Layer.Layer<unknown, unknown>, { memoMap })
 type Runtime = Pick<typeof rt, "runSync" | "runPromise" | "runPromiseExit" | "runFork" | "runCallback" | "dispose">
 const wrap = (effect: Parameters<typeof rt.runSync>[0]) => attach(effect as never) as never
 

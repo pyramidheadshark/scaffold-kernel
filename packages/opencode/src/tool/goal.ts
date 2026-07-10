@@ -15,6 +15,17 @@ When a goal is set, the main loop refuses to stop until an independent judge con
 - action "set" requires "condition" — the stop-condition text. Example: "Координационная задача закрыта: вызван scaffold_outcome_verified после личной проверки исхода ИЛИ scaffold_escalate с одним конкретным блокером. Документ/коммит/accepted не считаются."
 - action "clear" removes the active goal (use when the task is genuinely done or out of scope).`
 
+const parameters = z.object({
+  action: z.enum(["set", "clear"]),
+  condition: z.string().optional().describe("Stop-condition text. Required when action=set."),
+})
+
+type GoalMetadata = {
+  action: "set" | "clear"
+  ok?: boolean
+  condition?: string
+}
+
 export const GoalTool = Tool.define(
   "goal",
   Effect.gen(function* () {
@@ -22,28 +33,29 @@ export const GoalTool = Tool.define(
 
     return {
       description: DESCRIPTION,
-      parameters: z.object({
-        action: z.enum(["set", "clear"]),
-        condition: z.string().optional().describe("Stop-condition text. Required when action=set."),
-      }),
-      execute: (params: { action: "set" | "clear"; condition?: string }, ctx: Tool.Context) =>
+      parameters,
+      execute: (params: z.infer<typeof parameters>, ctx: Tool.Context): Effect.Effect<Tool.ExecuteResult<GoalMetadata>> =>
         Effect.gen(function* () {
           if (params.action === "clear") {
             yield* goal.clear(ctx.sessionID)
-            return { title: "Goal cleared", output: "Session goal cleared.", metadata: { action: "clear" } }
+            return {
+              title: "Goal cleared",
+              output: "Session goal cleared.",
+              metadata: { action: "clear" as const },
+            }
           }
           const condition = params.condition?.trim()
           if (!condition)
             return {
               title: "Goal not set",
               output: "action=set requires a non-empty `condition`.",
-              metadata: { action: "set", ok: false },
+                metadata: { action: "set" as const, ok: false },
             }
           yield* goal.set(ctx.sessionID, condition)
           return {
             title: "Goal set",
             output: `Session goal armed. The loop will not stop until satisfied:\n${condition}`,
-            metadata: { action: "set", ok: true, condition },
+            metadata: { action: "set" as const, ok: true, condition },
           }
         }).pipe(Effect.orDie),
     }

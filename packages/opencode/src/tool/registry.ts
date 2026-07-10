@@ -384,32 +384,35 @@ export const layer = Layer.effect(
   }),
 )
 
+const providedLayer = layer.pipe(
+  Layer.provide(Config.defaultLayer),
+  Layer.provide(Plugin.defaultLayer),
+  Layer.provide(Question.defaultLayer),
+  Layer.provide(Todo.defaultLayer),
+  Layer.provide(Skill.defaultLayer),
+  Layer.provide(Agent.defaultLayer),
+  Layer.provide(Session.defaultLayer),
+  Layer.provide(Provider.defaultLayer),
+  // scaffold PI-62 hotfix: GoalTool (builtin) requires @opencode/SessionGoal at
+  // registry build time. Provide the SAME Goal.defaultLayer reference used in
+  // app-runtime.ts and session/prompt.ts — Effect memoizes by reference within a
+  // single root build, so all three share ONE Goal instance (the goalGate in
+  // prompt.ts reads the goal this tool sets). Without this the main TUI crashes
+  // on start with "Service not found: @opencode/SessionGoal".
+  Layer.provide(Goal.defaultLayer),
+  Layer.provide(LSP.defaultLayer),
+  Layer.provide(Instruction.defaultLayer),
+  Layer.provide(AppFileSystem.defaultLayer),
+  Layer.provide(Bus.layer),
+  Layer.provide(FetchHttpClient.layer),
+  Layer.provide(Format.defaultLayer),
+  Layer.provide(CrossSpawnSpawner.defaultLayer),
+  Layer.provide(Ripgrep.defaultLayer),
+  Layer.provide(Truncate.defaultLayer),
+)
+
 export const defaultLayer = Layer.suspend(() =>
-  layer.pipe(
-    Layer.provide(Config.defaultLayer),
-    Layer.provide(Plugin.defaultLayer),
-    Layer.provide(Question.defaultLayer),
-    Layer.provide(Todo.defaultLayer),
-    Layer.provide(Skill.defaultLayer),
-    Layer.provide(Agent.defaultLayer),
-    Layer.provide(Session.defaultLayer),
-    Layer.provide(Provider.defaultLayer),
-    // scaffold PI-62 hotfix: GoalTool (builtin) requires @opencode/SessionGoal at
-    // registry build time. Provide the SAME Goal.defaultLayer reference used in
-    // app-runtime.ts and session/prompt.ts — Effect memoizes by reference within a
-    // single root build, so all three share ONE Goal instance (the goalGate in
-    // prompt.ts reads the goal this tool sets). Without this the main TUI crashes
-    // on start with "Service not found: @opencode/SessionGoal".
-    Layer.provide(Goal.defaultLayer),
-    Layer.provide(LSP.defaultLayer),
-    Layer.provide(Instruction.defaultLayer),
-    Layer.provide(AppFileSystem.defaultLayer),
-    Layer.provide(Bus.layer),
-    Layer.provide(FetchHttpClient.layer),
-    Layer.provide(Format.defaultLayer),
-    Layer.provide(CrossSpawnSpawner.defaultLayer),
-    Layer.provide(Ripgrep.defaultLayer),
-    Layer.provide(Truncate.defaultLayer),
+  providedLayer.pipe(
     Layer.provide(Layer.mergeAll(ActorRegistry.defaultLayer, ActorWaiter.defaultLayer)),
     Layer.provide(Team.defaultLayer),
     Layer.provide(
