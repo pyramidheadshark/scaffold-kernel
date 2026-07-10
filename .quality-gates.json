@@ -1,0 +1,38 @@
+{
+  "lint": {
+    "scope": [
+      "packages/opencode/src/workflow/**/*.ts",
+      "packages/opencode/test/workflow/**/*.ts"
+    ]
+  },
+  "coverage": {
+    "functions": 90,
+    "lines": 90,
+    "branches": 90,
+    "include": [
+      "src/workflow/**/*.ts",
+      "packages/opencode/src/workflow/**/*.ts"
+    ]
+  },
+  "stages": {
+    "phase1-external-workflow-state": {
+      "lint": {
+        "scope": [
+          "script/lint-gate.ts",
+          "packages/opencode/script/check-coverage.ts",
+          "packages/opencode/src/workflow/external-workflow-state.ts",
+          "packages/opencode/test/workflow/external-workflow-state.test.ts"
+        ]
+      },
+      "coverage": {
+        "functions": 90,
+        "lines": 90,
+        "branches": 90,
+        "include": [
+          "src/workflow/external-workflow-state.ts"
+        ],
+        "lcov": ".artifacts/coverage-external-workflow/lcov.info"
+      }
+    }
+  }
+}
