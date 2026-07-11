@@ -105,8 +105,10 @@ describe("Project.fromDirectory", () => {
 
   test("returns global for non-git directory", async () => {
     await using tmp = await tmpdir()
-    const { project } = await run((svc) => svc.fromDirectory(tmp.path))
+    const { project, sandbox } = await run((svc) => svc.fromDirectory(tmp.path))
     expect(project.id).toBe(ProjectID.global)
+    expect(project.worktree).toBe(tmp.path)
+    expect(sandbox).toBe(tmp.path)
   })
 
   test("derives stable project ID from cached UUID", async () => {
