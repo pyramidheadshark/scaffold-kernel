@@ -1,10 +1,12 @@
 import {
-  getQuickJS,
+  newQuickJSWASMModule,
   shouldInterruptAfterDeadline,
+  type QuickJSWASMModule,
   type QuickJSContext,
   type QuickJSDeferredPromise,
   type QuickJSHandle,
 } from "quickjs-emscripten"
+import releaseSyncVariant from "@jitl/quickjs-singlefile-cjs-release-sync"
 
 /** An injected host function: receives already-marshaled JS args, returns a JS value or Promise. */
 export type HostFn = (...args: unknown[]) => unknown | Promise<unknown>
@@ -30,6 +32,16 @@ const DEFAULT_MEMORY = 64 * 1024 * 1024
  * single-shot tests stay deterministic. The runtime always passes seed=hash(runID)
  * so production paths never see this default. */
 const DEFAULT_PRNG_SEED = 0x9e3779b9
+
+let quickJSModulePromise: Promise<QuickJSWASMModule> | undefined
+
+async function loadQuickJS() {
+  // The default wasmfile variant can break in bundled runtimes that cannot
+  // resolve `emscripten-module.wasm` relative to the generated JS. The
+  // singlefile CJS release variant embeds the payload and avoids that fetch path.
+  quickJSModulePromise ??= newQuickJSWASMModule(releaseSyncVariant)
+  return quickJSModulePromise
+}
 
 // Pure-guest helpers. parallel/pipeline do NO throttling — concurrency is
 // enforced by the host semaphore inside the agent() hook. They also do NOT
@@ -75,7 +87,7 @@ globalThis.URL = class URL {
  *  - every QuickJSHandle disposed before context dispose (else process abort)
  */
 export async function evalScript(body: string, hooks: Record<string, HostFn>, opts: SandboxOptions = {}): Promise<unknown> {
-  const QuickJS = await getQuickJS()
+  const QuickJS = await loadQuickJS()
   const rt = QuickJS.newRuntime()
   rt.setMemoryLimit(opts.memoryLimitBytes ?? DEFAULT_MEMORY)
   rt.setInterruptHandler(shouldInterruptAfterDeadline(Date.now() + (opts.deadlineMs ?? DEFAULT_DEADLINE_MS)))
