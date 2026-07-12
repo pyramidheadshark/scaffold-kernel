@@ -2,8 +2,24 @@ import { useDialog } from "@tui/ui/dialog"
 import { DialogConfirm } from "@tui/ui/dialog-confirm"
 import { DialogSelect, type DialogSelectOption } from "@tui/ui/dialog-select"
 import { useRoute } from "@tui/context/route"
-import { useSync } from "@tui/context/sync"
+import { useSync, type WorkflowRun } from "@tui/context/sync"
 import { createMemo, onCleanup, onMount } from "solid-js"
+
+export function formatWorkflowRunTitle(run: WorkflowRun) {
+  return `${run.name}  ${run.status}  ${run.topLevelStep ?? run.currentPhase ?? "-"}  ${run.succeeded}✓ ${run.failed}✗ ${run.running}⟳`
+}
+
+export function formatWorkflowRunDescription(run: WorkflowRun) {
+  const parts = [
+    run.workflowSource ? `source: ${run.workflowSource}` : undefined,
+    run.readinessVerdict ? `verdict: ${run.readinessVerdict}` : undefined,
+    run.blockingGates?.length ? `gates: ${run.blockingGates.join(",")}` : undefined,
+    run.nextAction?.title
+      ? `next: ${run.nextAction.title}${run.nextAction.reason ? ` — ${run.nextAction.reason}` : ""}`
+      : undefined,
+  ].filter((part): part is string => Boolean(part))
+  return parts.length > 0 ? parts.join("  •  ") : undefined
+}
 
 export function DialogWorkflows() {
   const dialog = useDialog()
@@ -37,7 +53,8 @@ export function DialogWorkflows() {
     if (list.length === 0)
       return [{ title: "(no workflow runs)", value: "empty", onSelect: (d) => d.clear() }]
     return list.map((r) => ({
-      title: `${r.name}  ${r.status}  ${r.currentPhase ?? "-"}  ${r.succeeded}✓ ${r.failed}✗ ${r.running}⟳`,
+      title: formatWorkflowRunTitle(r),
+      description: formatWorkflowRunDescription(r),
       value: r.runID,
       onSelect: async (d) => {
         // Resume an incomplete run; completed runs just close.

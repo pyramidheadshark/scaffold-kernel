@@ -6,6 +6,7 @@ import { Database, eq, desc } from "../storage"
 import { WorkflowRunTable } from "./workflow.sql"
 import { Global } from "../global"
 import type { SessionID } from "../session/schema"
+import type { ExternalWorkflowSnapshot } from "./external-workflow-state"
 
 // Recursively sort object keys so JSON.stringify is canonical (key order in the
 // guest's opts object must not change the content key).
@@ -65,6 +66,12 @@ export type RunSummary = {
   succeeded: number
   failed: number
   currentPhase?: string
+  topLevelStep?: string
+  blocking?: boolean
+  blockingGates?: string[]
+  nextAction?: ExternalWorkflowSnapshot["nextAction"]
+  readinessVerdict?: string
+  workflowSource?: string
   parentActorID?: string
   args?: unknown
   scriptSha?: string

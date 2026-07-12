@@ -5,7 +5,7 @@ import {
   loadExternalWorkflowSnapshot,
   parseExternalWorkflowSnapshot,
 } from "../../src/workflow/external-workflow-state"
-import { mergeExternalWorkflowStatus, resolveWorkflowStateFile } from "../../src/workflow/runtime"
+import { mergeExternalWorkflowRunSummary, mergeExternalWorkflowStatus, resolveWorkflowStateFile } from "../../src/workflow/runtime"
 
 describe("external workflow snapshot contract", () => {
   test("parses a valid generic workflow snapshot", () => {
@@ -143,5 +143,41 @@ describe("mergeExternalWorkflowStatus", () => {
     expect(merged.currentPhase).toBe("internal-phase")
     expect(merged.workflowSource).toBeUndefined()
     expect(merged.topLevelStep).toBeUndefined()
+  })
+})
+
+describe("mergeExternalWorkflowRunSummary", () => {
+  test("enriches a run summary with external workflow fields", () => {
+    const merged = mergeExternalWorkflowRunSummary(
+      {
+        runID: "wf_00000000000000000000000000",
+        sessionID: "ses_16ec185f2ffexEGkbWeMqWSucv" as any,
+        name: "wf",
+        status: "running",
+        running: 1,
+        succeeded: 0,
+        failed: 0,
+        currentPhase: "internal-phase",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        version: 1,
+        source: "scaffold-s2tdd",
+        currentPhase: "P4",
+        topLevelStep: "Implementation",
+        blocking: true,
+        blockingGates: ["G5"],
+        nextAction: { title: "Закрыть G5", reason: "Нужна реализация" },
+        readinessVerdict: "blocked:G5",
+      },
+    )
+    expect(merged.currentPhase).toBe("P4")
+    expect(merged.topLevelStep).toBe("Implementation")
+    expect(merged.blocking).toBe(true)
+    expect(merged.blockingGates).toEqual(["G5"])
+    expect(merged.nextAction).toEqual({ title: "Закрыть G5", reason: "Нужна реализация" })
+    expect(merged.readinessVerdict).toBe("blocked:G5")
+    expect(merged.workflowSource).toBe("scaffold-s2tdd")
   })
 })

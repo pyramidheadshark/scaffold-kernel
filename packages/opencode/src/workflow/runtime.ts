@@ -56,11 +56,21 @@ type WorkflowStatus = {
   workflowSource?: string
 }
 
+type ExternalWorkflowFields = {
+  currentPhase?: string
+  topLevelStep?: string
+  blocking?: boolean
+  blockingGates?: string[]
+  nextAction?: ExternalWorkflowSnapshot["nextAction"]
+  readinessVerdict?: string
+  workflowSource?: string
+}
+
 export function resolveWorkflowStateFile(workflowStateFile?: string, envFile = process.env["MIMOCODE_WORKFLOW_STATE_FILE"]) {
   return workflowStateFile ?? envFile
 }
 
-export function mergeExternalWorkflowStatus(base: WorkflowStatus, external?: ExternalWorkflowSnapshot): WorkflowStatus {
+function mergeExternalWorkflowFields<T extends object>(base: T, external?: ExternalWorkflowSnapshot): T & ExternalWorkflowFields {
   return {
     ...base,
     ...(external?.source !== undefined ? { workflowSource: external.source } : {}),
@@ -71,6 +81,14 @@ export function mergeExternalWorkflowStatus(base: WorkflowStatus, external?: Ext
     ...(external?.nextAction !== undefined ? { nextAction: external.nextAction } : {}),
     ...(external?.readinessVerdict !== undefined ? { readinessVerdict: external.readinessVerdict } : {}),
   }
+}
+
+export function mergeExternalWorkflowStatus(base: WorkflowStatus, external?: ExternalWorkflowSnapshot): WorkflowStatus {
+  return mergeExternalWorkflowFields(base, external)
+}
+
+export function mergeExternalWorkflowRunSummary(base: RunSummary, external?: ExternalWorkflowSnapshot): RunSummary {
+  return mergeExternalWorkflowFields(base, external)
 }
 
 export type RunOutcome =
@@ -1165,7 +1183,15 @@ export const layer = Layer.effect(
     })
 
     const list = Effect.fn("WorkflowRuntime.list")(function* (input?: { sessionID?: SessionID }) {
-      return yield* WorkflowPersistence.list(input)
+      const rows = yield* WorkflowPersistence.list(input)
+      if (!input?.sessionID || rows.length === 0) return rows
+      const newest = rows[0]
+      const live = runs.get(newest.runID)
+      const external = yield* Effect.promise(() =>
+        loadExternalWorkflowSnapshot(resolveWorkflowStateFile(live?.workflowStateFile)),
+      )
+      if (!external) return rows
+      return [mergeExternalWorkflowRunSummary(newest, external), ...rows.slice(1)]
     })
 
     // Re-launch a persisted run under the SAME runID via the shared launch path.

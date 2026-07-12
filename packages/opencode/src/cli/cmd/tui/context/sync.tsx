@@ -56,6 +56,15 @@ export type WorkflowRun = {
   succeeded: number
   failed: number
   currentPhase?: string
+  topLevelStep?: string
+  blocking?: boolean
+  blockingGates?: string[]
+  nextAction?: {
+    title?: string
+    reason?: string
+  }
+  readinessVerdict?: string
+  workflowSource?: string
   parentActorID?: string
   args?: unknown
   error?: string
