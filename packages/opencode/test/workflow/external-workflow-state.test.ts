@@ -6,6 +6,7 @@ import {
   parseExternalWorkflowSnapshot,
 } from "../../src/workflow/external-workflow-state"
 import { mergeExternalWorkflowRunSummary, mergeExternalWorkflowStatus, resolveWorkflowStateFile } from "../../src/workflow/runtime"
+import { SessionID } from "../../src/session/schema"
 
 describe("external workflow snapshot contract", () => {
   test("parses a valid generic workflow snapshot", () => {
@@ -151,7 +152,7 @@ describe("mergeExternalWorkflowRunSummary", () => {
     const merged = mergeExternalWorkflowRunSummary(
       {
         runID: "wf_00000000000000000000000000",
-        sessionID: "ses_16ec185f2ffexEGkbWeMqWSucv" as any,
+        sessionID: SessionID.make("ses_16ec185f2ffexEGkbWeMqWSucv"),
         name: "wf",
         status: "running",
         running: 1,
