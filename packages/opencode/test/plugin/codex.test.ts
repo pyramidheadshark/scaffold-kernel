@@ -3,6 +3,7 @@ import {
   parseJwtClaims,
   extractAccountIdFromClaims,
   extractAccountId,
+  OAUTH_ALLOWED_OPENAI_MODELS,
   type IdTokenClaims,
 } from "../../src/plugin/codex"
 
@@ -118,6 +119,15 @@ describe("plugin.codex", () => {
           refresh_token: "rt",
         }),
       ).toBe("acc-123")
+    })
+  })
+
+  describe("OAUTH_ALLOWED_OPENAI_MODELS", () => {
+    test("includes GPT-5.6 family for Codex OAuth allowlist", () => {
+      expect(OAUTH_ALLOWED_OPENAI_MODELS.has("gpt-5.6")).toBe(true)
+      expect(OAUTH_ALLOWED_OPENAI_MODELS.has("gpt-5.6-sol")).toBe(true)
+      expect(OAUTH_ALLOWED_OPENAI_MODELS.has("gpt-5.6-terra")).toBe(true)
+      expect(OAUTH_ALLOWED_OPENAI_MODELS.has("gpt-5.6-luna")).toBe(true)
     })
   })
 })

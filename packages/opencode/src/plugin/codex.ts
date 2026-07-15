@@ -15,6 +15,28 @@ const CODEX_API_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses"
 const OAUTH_PORT = 1455
 const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000
 
+export const OAUTH_ALLOWED_OPENAI_MODELS = new Set([
+  "gpt-5.1-codex",
+  "gpt-5.1-codex-max",
+  "gpt-5.1-codex-mini",
+  "gpt-5.2",
+  "gpt-5.2-codex",
+  "gpt-5.3-codex",
+  "gpt-5.4",
+  "gpt-5.4-mini",
+  // Scaffold (PI-67/v0.1.19): gpt-5.5 есть в bundled-каталоге openai, но без этой строки
+  // loader прунит её при codex-OAuth → ProviderModelNotFoundError. Бэкенд подписки её отдаёт
+  // (probe HTTP 200, 2026-06-29). Добавление разблокирует openai/gpt-5.5 как флагман.
+  "gpt-5.5",
+  // PI-82: GPT-5.6 family уже проходит direct runtime oracle, но при saved OpenAI OAuth
+  // CodexAuthPlugin прунил её локальным allowlist'ом до запуска. Разрешаем семейство целиком
+  // по базовым model IDs; experimental fast/pro variants сохранятся автоматически по model.api.id.
+  "gpt-5.6",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+])
+
 interface PkceCodes {
   verifier: string
   challenge: string
@@ -365,23 +387,9 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
         if (auth.type !== "oauth") return {}
 
         // Filter models to only allowed Codex models for OAuth
-        const allowedModels = new Set([
-          "gpt-5.1-codex",
-          "gpt-5.1-codex-max",
-          "gpt-5.1-codex-mini",
-          "gpt-5.2",
-          "gpt-5.2-codex",
-          "gpt-5.3-codex",
-          "gpt-5.4",
-          "gpt-5.4-mini",
-          // Scaffold (PI-67/v0.1.19): gpt-5.5 есть в bundled-каталоге openai, но без этой строки
-          // loader прунит её при codex-OAuth → ProviderModelNotFoundError. Бэкенд подписки её отдаёт
-          // (probe HTTP 200, 2026-06-29). Добавление разблокирует openai/gpt-5.5 как флагман.
-          "gpt-5.5",
-        ])
         for (const [modelId, model] of Object.entries(provider.models)) {
           if (modelId.includes("codex")) continue
-          if (allowedModels.has(model.api.id)) continue
+          if (OAUTH_ALLOWED_OPENAI_MODELS.has(model.api.id)) continue
           delete provider.models[modelId]
         }
 
