@@ -21,6 +21,33 @@ import * as readline from "readline"
 
 type PluginAuth = NonNullable<Hooks["auth"]>
 
+export function describeCredential(providerLabel: string, info: Auth.Info): string[] {
+  const lines = [`Provider: ${providerLabel}`]
+
+  if (info.type === "api") {
+    const userID = info.metadata?.uid ?? info.metadata?.userId ?? info.metadata?.accountId
+    if (userID) {
+      lines.push(`User ID: ${userID}`)
+      return lines
+    }
+  }
+
+  if (info.type === "oauth" && info.accountId) {
+    lines.push(`Account ID: ${info.accountId}`)
+    return lines
+  }
+
+  lines.push(`Type: ${info.type}`)
+  return lines
+}
+
+export function formatCredentialOption(providerID: string, info: Auth.Info, providerLabel: string) {
+  return {
+    label: providerLabel + UI.Style.TEXT_DIM + ` (${info.type})`,
+    value: providerID,
+  }
+}
+
 const put = (key: string, info: Auth.Info) =>
   AppRuntime.runPromise(
     Effect.gen(function* () {
@@ -676,22 +703,37 @@ export const ProvidersWhoamiCommand = cmd({
   async handler(_args) {
     UI.empty()
     prompts.intro("Current user")
-    const info = await AppRuntime.runPromise(
+    const credentials: Array<[string, Auth.Info]> = await AppRuntime.runPromise(
       Effect.gen(function* () {
         const auth = yield* Auth.Service
-        return yield* auth.get("xiaomi")
+        return Object.entries(yield* auth.all())
       }),
     )
-    if (!info) {
+    if (credentials.length === 0) {
       prompts.log.error("Not logged in. Run `mimo auth login` to log in.")
       return
     }
-    if (info.type === "api" && info.metadata) {
-      prompts.log.info(`Provider: MiMo`)
-      prompts.log.info(`User ID: ${info.metadata.uid ?? "unknown"}`)
+
+    const database = await ModelsDev.get()
+    let selectedProviderID: string
+    let info: Auth.Info
+
+    if (credentials.length === 1) {
+      ;[selectedProviderID, info] = credentials[0]!
     } else {
-      prompts.log.info(`Provider: MiMo`)
-      prompts.log.info(`Type: ${info.type}`)
+      const selected = await prompts.select({
+        message: "Select provider",
+        options: credentials.map(([providerID, value]) =>
+          formatCredentialOption(providerID, value, database[providerID]?.name || providerID),
+        ),
+      })
+      if (prompts.isCancel(selected)) throw new UI.CancelledError()
+      selectedProviderID = selected as string
+      info = credentials.find(([providerID]) => providerID === selectedProviderID)![1]
+    }
+
+    for (const line of describeCredential(database[selectedProviderID]?.name || selectedProviderID, info)) {
+      prompts.log.info(line)
     }
     prompts.outro("")
   },
