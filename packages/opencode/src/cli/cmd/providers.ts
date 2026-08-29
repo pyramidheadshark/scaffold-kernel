@@ -10,14 +10,12 @@ import os from "os"
 import { Config } from "../../config"
 import { Global } from "../../global"
 import { Plugin } from "../../plugin"
-import { MimoFree } from "../../plugin/mimo-free"
 import { t } from "../i18n"
 import { Instance } from "../../project/instance"
 import type { Hooks } from "@mimo-ai/plugin"
 import { Process } from "../../util"
 import { text } from "node:stream/consumers"
 import { Effect } from "effect"
-import * as readline from "readline"
 
 type PluginAuth = NonNullable<Hooks["auth"]>
 
@@ -215,125 +213,6 @@ export function resolvePluginProviders(input: {
   return result
 }
 
-async function mimoFreeLogin() {
-  const spinner = prompts.spinner()
-  spinner.start(t("cli.providers.mimo_free.verifying"))
-  try {
-    const { fingerprint, exp } = await MimoFree.verify()
-    spinner.stop(t("cli.providers.mimo_free.ready"))
-    const expDate = new Date(exp).toISOString()
-    prompts.log.success(t("cli.providers.mimo_free.default_set"))
-    prompts.log.info(
-      [
-        `Endpoint:    ${MimoFree.chatBaseUrl}/chat`,
-        `Fingerprint: ${fingerprint.slice(0, 12)}…${fingerprint.slice(-4)}`,
-        `Token exp:   ${expDate}`,
-      ].join("\n"),
-    )
-    prompts.log.info(t("cli.providers.mimo_free.usage_hint"))
-    prompts.outro("Done")
-  } catch (err) {
-    spinner.stop(t("cli.providers.mimo_free.failed"), 1)
-    prompts.log.error(err instanceof Error ? err.message : String(err))
-    prompts.outro("Done")
-  }
-}
-
-async function mimoLogin() {
-  const hooks = await AppRuntime.runPromise(
-    Effect.gen(function* () {
-      const plugin = yield* Plugin.Service
-      return yield* plugin.list()
-    }),
-  )
-  const mimoHook = hooks.findLast((h) => h.auth?.provider === "xiaomi")
-  if (!mimoHook?.auth) {
-    prompts.log.error("MiMo auth plugin not found")
-    return
-  }
-
-  const method = mimoHook.auth.methods[0]
-  if (method.type !== "oauth") return
-
-  const authorize = await method.authorize()
-  if (authorize.method !== "auto") return
-
-  prompts.log.info(`Browser didn't open? Use the url below to sign in:\n${authorize.url}`)
-
-  const browserPromise = authorize.callback().catch(() => ({ type: "failed" as const }))
-
-  const MAX_RETRIES = 3
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const raceResult = await raceCallbackAndStdin(browserPromise)
-
-    if (raceResult.source === "browser") {
-      if (raceResult.data.type === "success" && "key" in raceResult.data) {
-        await put("xiaomi", {
-          type: "api",
-          key: raceResult.data.key,
-          ...(raceResult.data.metadata ? { metadata: raceResult.data.metadata } : {}),
-        })
-        prompts.log.success("Login successful")
-        prompts.outro("Done")
-        return
-      }
-      prompts.log.error("Login failed")
-      prompts.outro("Done")
-      return
-    }
-
-    const callbackResult = await authorize.callback(raceResult.input)
-    if (callbackResult.type === "success" && "key" in callbackResult) {
-      await put("xiaomi", {
-        type: "api",
-        key: callbackResult.key,
-        ...(callbackResult.metadata ? { metadata: callbackResult.metadata } : {}),
-      })
-      prompts.log.success("Login successful")
-      prompts.outro("Done")
-      return
-    }
-
-    const remaining = MAX_RETRIES - attempt - 1
-    if (remaining > 0) {
-      prompts.log.error(t("cli.providers.mimo_login.decrypt_retry", { remaining }))
-    } else {
-      prompts.log.error(t("cli.providers.mimo_login.decrypt_exhausted"))
-    }
-  }
-}
-
-function raceCallbackAndStdin<T>(
-  browserPromise: Promise<T>,
-): Promise<{ source: "browser"; data: T } | { source: "paste"; input: string }> {
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-
-    let settled = false
-    const cleanup = () => {
-      if (settled) return
-      settled = true
-      rl.close()
-    }
-
-    browserPromise.then((data) => {
-      if (settled) return
-      cleanup()
-      process.stdout.write("\n")
-      resolve({ source: "browser", data })
-    })
-
-    rl.question("Paste code here if prompted > ", (answer) => {
-      if (settled) return
-      const trimmed = answer.trim()
-      if (trimmed.length > 0) {
-        cleanup()
-        resolve({ source: "paste", input: trimmed })
-      }
-    })
-  })
-}
-
 export const ProvidersCommand = cmd({
   command: "providers",
   aliases: ["auth"],
@@ -517,13 +396,7 @@ export const ProvidersLoginCommand = cmd({
         ]
 
         let provider: string
-        if (args.provider === "xiaomi") {
-          await mimoLogin()
-          return
-        } else if (args.provider === "mimo" || args.provider === "mimo-free") {
-          await mimoFreeLogin()
-          return
-        } else if (args.provider) {
+        if (args.provider) {
           const input = args.provider
           const byID = options.find((x) => x.value === input)
           const byName = options.find((x) => x.label.toLowerCase() === input.toLowerCase())
@@ -534,26 +407,6 @@ export const ProvidersLoginCommand = cmd({
           }
           provider = match.value
         } else {
-          const choice = await prompts.select({
-            message: t("cli.providers.select"),
-            options: [
-              { label: "MiMo", value: "xiaomi", hint: t("cli.providers.mimo.recommended_hint") },
-              { label: "MiMo Auto (free)", value: "mimo-free", hint: t("cli.providers.mimo_free.hint") },
-              { label: t("cli.providers.other"), value: "__other__" },
-            ],
-          })
-          if (prompts.isCancel(choice)) throw new UI.CancelledError()
-
-          if (choice === "xiaomi") {
-            await mimoLogin()
-            return
-          }
-
-          if (choice === "mimo-free") {
-            await mimoFreeLogin()
-            return
-          }
-
           const selected = await prompts.autocomplete({
             message: t("cli.providers.select"),
             maxItems: 8,
