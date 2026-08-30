@@ -378,6 +378,16 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
           // loader прунит её при codex-OAuth → ProviderModelNotFoundError. Бэкенд подписки её отдаёт
           // (probe HTTP 200, 2026-06-29). Добавление разблокирует openai/gpt-5.5 как флагман.
           "gpt-5.5",
+          // Scaffold (2026-08-30): GPT-5.6 (релиз 09.07.2026, models.dev подтверждает 4 записи —
+          // "gpt-5.6" (алиас Sol), "gpt-5.6-sol"/"-terra"/"-luna") — тот же класс блокировки, что
+          // был у gpt-5.5 до v0.1.19. Требует живого probe (HTTP 200 к chatgpt.com/backend-api/
+          // codex/responses) для КАЖДОГО слага перед тем, как рекомендовать клиенту как флагман —
+          // не всё, что есть в каталоге, обязательно отдаётся именно ChatGPT/Codex-подпиской
+          // (в отличие от enterprise API). Добавлены все 4 — прунинг снят, доступность решает бэкенд.
+          "gpt-5.6",
+          "gpt-5.6-sol",
+          "gpt-5.6-terra",
+          "gpt-5.6-luna",
         ])
         for (const [modelId, model] of Object.entries(provider.models)) {
           if (modelId.includes("codex")) continue
