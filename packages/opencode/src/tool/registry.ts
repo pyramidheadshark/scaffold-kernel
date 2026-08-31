@@ -457,42 +457,52 @@ export const layer = Layer.effect(
   }),
 )
 
+// scaffold PI-129: split into two chained .pipe() calls — Effect's .pipe() overloads are
+// typed up to 20 arguments; this Layer.provide() chain sat at exactly 20 on upstream and our
+// own Goal.defaultLayer addition (PI-62, see comment below) pushed it to 21, which TypeScript
+// silently widens past its overload set to `unknown` (TS2554) rather than catching a genuinely
+// missing dependency — the real cascade this caused is documented in the Track B rebaseline
+// investigation (pi-scaffold/docs, "Track B typecheck 78→35"). Order between the two .pipe()
+// calls doesn't matter: each Layer.provide() here supplies an independent service dependency.
 export const defaultLayer = Layer.suspend(() =>
-  layer.pipe(
-    Layer.provide(Config.defaultLayer),
-    Layer.provide(Plugin.defaultLayer),
-    Layer.provide(Question.defaultLayer),
-    Layer.provide(Todo.defaultLayer),
-    Layer.provide(Skill.defaultLayer),
-    Layer.provide(Agent.defaultLayer),
-    Layer.provide(Session.defaultLayer),
-    Layer.provide(Provider.defaultLayer),
-    // scaffold PI-62 hotfix: GoalTool (builtin) requires @opencode/SessionGoal at
-    // registry build time. Provide the SAME Goal.defaultLayer reference used in
-    // app-runtime.ts and session/prompt.ts — Effect memoizes by reference within a
-    // single root build, so all three share ONE Goal instance (the goalGate in
-    // prompt.ts reads the goal this tool sets). Without this the main TUI crashes
-    // on start with "Service not found: @opencode/SessionGoal".
-    Layer.provide(Goal.defaultLayer),
-    Layer.provide(LSP.defaultLayer),
-    Layer.provide(Instruction.defaultLayer),
-    Layer.provide(AppFileSystem.defaultLayer),
-    Layer.provide(Bus.layer),
-    Layer.provide(FetchHttpClient.layer),
-    Layer.provide(Format.defaultLayer),
-    Layer.provide(CrossSpawnSpawner.defaultLayer),
-    Layer.provide(Ripgrep.defaultLayer),
-    Layer.provide(Truncate.defaultLayer),
-    Layer.provide(Layer.mergeAll(ActorRegistry.defaultLayer, ActorWaiter.defaultLayer)),
-    Layer.provide(Team.defaultLayer),
-    Layer.provide(
-      Layer.mergeAll(
-        Memory.defaultLayer,
-        History.defaultLayer,
-        SessionCheckpoint.defaultLayer,
-        TaskRegistry.defaultLayer,
-        Auth.defaultLayer,
+  layer
+    .pipe(
+      Layer.provide(Config.defaultLayer),
+      Layer.provide(Plugin.defaultLayer),
+      Layer.provide(Question.defaultLayer),
+      Layer.provide(Todo.defaultLayer),
+      Layer.provide(Skill.defaultLayer),
+      Layer.provide(Agent.defaultLayer),
+      Layer.provide(Session.defaultLayer),
+      Layer.provide(Provider.defaultLayer),
+      // scaffold PI-62 hotfix: GoalTool (builtin) requires @opencode/SessionGoal at
+      // registry build time. Provide the SAME Goal.defaultLayer reference used in
+      // app-runtime.ts and session/prompt.ts — Effect memoizes by reference within a
+      // single root build, so all three share ONE Goal instance (the goalGate in
+      // prompt.ts reads the goal this tool sets). Without this the main TUI crashes
+      // on start with "Service not found: @opencode/SessionGoal".
+      Layer.provide(Goal.defaultLayer),
+      Layer.provide(LSP.defaultLayer),
+      Layer.provide(Instruction.defaultLayer),
+      Layer.provide(AppFileSystem.defaultLayer),
+      Layer.provide(Bus.layer),
+      Layer.provide(FetchHttpClient.layer),
+    )
+    .pipe(
+      Layer.provide(Format.defaultLayer),
+      Layer.provide(CrossSpawnSpawner.defaultLayer),
+      Layer.provide(Ripgrep.defaultLayer),
+      Layer.provide(Truncate.defaultLayer),
+      Layer.provide(Layer.mergeAll(ActorRegistry.defaultLayer, ActorWaiter.defaultLayer)),
+      Layer.provide(Team.defaultLayer),
+      Layer.provide(
+        Layer.mergeAll(
+          Memory.defaultLayer,
+          History.defaultLayer,
+          SessionCheckpoint.defaultLayer,
+          TaskRegistry.defaultLayer,
+          Auth.defaultLayer,
+        ),
       ),
     ),
-  ),
 )
