@@ -6,6 +6,7 @@ import fs from "fs/promises"
 import path from "path"
 import { evalScript } from "../../src/workflow/sandbox"
 import { Agent } from "../../src/agent/agent"
+import { Plugin } from "../../src/plugin"
 import { Truncate, Tool } from "../../src/tool"
 import { ToolScriptTool, renderToolScriptDeclarations, viewExecSubtools, type ExecSubPartSnapshot } from "../../src/tool/tool-script"
 import { RecoverableError } from "../../src/tool/recoverable"
@@ -66,7 +67,7 @@ describe("sandbox non-deterministic mode", () => {
   })
 })
 
-const runtime = ManagedRuntime.make(Layer.mergeAll(Truncate.defaultLayer, Agent.defaultLayer))
+const runtime = ManagedRuntime.make(Layer.mergeAll(Truncate.defaultLayer, Agent.defaultLayer, Plugin.defaultLayer))
 
 const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "mimocode-test-toolscript-"))
 afterAll(async () => {
