@@ -92,6 +92,71 @@ function warnShellFallbackOnce(id: string) {
   log.warn(`tool '${id}' configured with invocation_style='shell' but has no shell field; falling back to JSON`)
 }
 
+// scaffold PI-129: compact exec-dispatcher for GPT/Codex models — NOT an adaptation of
+// upstream's tool_script (QuickJS-sandboxed programmatic orchestration, a large standalone
+// subsystem this fork does not carry). Instead a single top-level "exec" tool re-dispatches
+// to the same fully-rendered tool definitions any other model would see directly, collapsing
+// N per-tool JSON Schemas (id/description/parameters boilerplate on each) into one. Live
+// bisection against chatgpt.com/backend-api/codex/responses showed gpt-5.4/5.5/5.4-mini
+// uniformly return an empty response.incomplete once the request's tools JSON exceeds
+// roughly 90-95KB — this fork's native tool set alone (bash/actor/task/etc.) already sits
+// close to or over that line for any non-trivial agent/skill catalog.
+// Reuses the exact GPT-detection already used a few lines below for the edit/apply_patch
+// split, so both stay in lockstep if that heuristic ever changes.
+const isCompactSurfaceModel = (modelID: string) =>
+  modelID.includes("gpt-") && !modelID.includes("oss") && !modelID.includes("gpt-4")
+
+type ExecDispatchDef = {
+  id: string
+  description: string
+  parameters: z.ZodType
+  execute: Tool.Def["execute"]
+  formatValidationError?: Tool.Def["formatValidationError"]
+}
+
+function buildExecDispatchTool(fullTools: ExecDispatchDef[]): ExecDispatchDef {
+  const byId = new Map(fullTools.map((t) => [t.id, t]))
+  const catalog = fullTools
+    .map((t) => `- ${t.id}: ${(t.description ?? "").split("\n")[0].slice(0, 160)}`)
+    .join("\n")
+  return {
+    id: "exec",
+    description: [
+      "Dispatch gateway for every real tool available in this session. Tools are NOT exposed",
+      "as separate top-level functions on GPT/Codex models — call them all through this one,",
+      'passing { tool: "<id>", args: {...} } with args shaped exactly like that tool\'s own parameters.',
+      "",
+      "Available tools:",
+      catalog,
+    ].join("\n"),
+    parameters: z.object({
+      tool: z.string().describe("The id of the real tool to invoke (see the list above)"),
+      args: z.record(z.string(), z.any()).optional().describe("Arguments for the target tool, matching its own parameter shape"),
+    }),
+    execute: (input: { tool: string; args?: Record<string, unknown> }, ctx: Tool.Context) =>
+      Effect.gen(function* () {
+        const target = byId.get(input.tool)
+        if (!target) {
+          return {
+            title: "exec",
+            metadata: {},
+            output: `Unknown tool: '${input.tool}'. Available: ${[...byId.keys()].join(", ")}`,
+          }
+        }
+        const parsed = target.parameters.safeParse(input.args ?? {})
+        if (!parsed.success) {
+          const message = target.formatValidationError?.(parsed.error) ?? parsed.error.message
+          return {
+            title: target.id,
+            metadata: {},
+            output: `Invalid arguments for '${input.tool}': ${message}`,
+          }
+        }
+        return yield* target.execute(parsed.data, ctx)
+      }),
+  } as unknown as ExecDispatchDef
+}
+
 type ActorDef = Tool.InferDef<typeof ActorTool>
 type ReadDef = Tool.InferDef<typeof ReadTool>
 
@@ -312,6 +377,7 @@ export const layer = Layer.effect(
     })
 
     const tools: Interface["tools"] = Effect.fn("ToolRegistry.tools")(function* (input) {
+      const isGPT = isCompactSurfaceModel(input.modelID)
       let filtered = (yield* all()).filter((tool) => {
         if (tool.id === CodeSearchTool.id || tool.id === WebSearchTool.id) {
           if (tool.id === WebSearchTool.id) {
@@ -324,10 +390,8 @@ export const layer = Layer.effect(
           return input.providerID === ProviderID.opencode || Flag.MIMOCODE_ENABLE_EXA
         }
 
-        const usePatch =
-          input.modelID.includes("gpt-") && !input.modelID.includes("oss") && !input.modelID.includes("gpt-4")
-        if (tool.id === ApplyPatchTool.id) return usePatch
-        if (tool.id === EditTool.id || tool.id === WriteTool.id) return !usePatch
+        if (tool.id === ApplyPatchTool.id) return isGPT
+        if (tool.id === EditTool.id || tool.id === WriteTool.id) return !isGPT
 
         return true
       })
@@ -340,7 +404,7 @@ export const layer = Layer.effect(
       const cfg = yield* config.get()
       const resolveStyle = (toolId: string): "json" | "shell" => resolveInvocationStyle(cfg.tool, toolId)
 
-      return yield* Effect.forEach(
+      const rendered = yield* Effect.forEach(
         filtered,
         Effect.fnUntraced(function* (tool: Tool.Def) {
           using _ = log.time(tool.id)
@@ -373,6 +437,15 @@ export const layer = Layer.effect(
         }),
         { concurrency: "unbounded" },
       )
+
+      // scaffold PI-129: collapse the fully-rendered per-model tool set into one compact
+      // "exec" dispatcher for GPT/Codex models — see buildExecDispatchTool above for why.
+      // `rendered` already carries each tool's real (possibly shell-wrapped, plugin-hooked)
+      // description/parameters/execute, so dispatch through it, not through `filtered`.
+      if (isCompactSurfaceModel(input.modelID)) {
+        return [buildExecDispatchTool(rendered) as unknown as Tool.Def]
+      }
+      return rendered
     })
 
     const named: Interface["named"] = Effect.fn("ToolRegistry.named")(function* () {
