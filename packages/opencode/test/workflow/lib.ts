@@ -143,6 +143,10 @@ export function makeLayer() {
     Layer.provide(History.defaultLayer),
     Layer.provide(TaskRegistry.defaultLayer),
     Layer.provide(Auth.defaultLayer),
+    // scaffold PI-62/PI-129: GoalTool (builtin, registered inside ToolRegistry.layer)
+    // requires Goal.Service. See the identical fix + full explanation in
+    // test/actor/spawn.test.ts.
+    Layer.provide(Goal.defaultLayer),
     Layer.provideMerge(todo),
     Layer.provideMerge(question),
     Layer.provideMerge(deps),
