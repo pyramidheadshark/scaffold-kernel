@@ -1,4 +1,4 @@
-import { Cause, Deferred, Effect, Layer, Context, Scope } from "effect"
+import { Cause, Deferred, Duration, Effect, Layer, Context, Scope } from "effect"
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
 import { SYSTEM_SPAWNED_AGENT_TYPES } from "@/agent/config"
@@ -769,7 +769,7 @@ export const layer: Layer.Layer<
         // torn transcript — every other cleanup reason (interrupt/error/blocked/
         // normal) keeps the original unconditional 250ms.
         const toolCleanupTimeout = ctx.needsOverflowHandling
-          ? `${Flag.MIMOCODE_OVERFLOW_TOOLCALL_GRACE_MS} millis`
+          ? Duration.millis(Flag.MIMOCODE_OVERFLOW_TOOLCALL_GRACE_MS)
           : "250 millis"
         yield* Effect.forEach(
           Object.values(ctx.toolcalls),
