@@ -8,6 +8,7 @@ import type { Tool as AiTool } from "ai"
 import { EffectBridge, InstanceState } from "@/effect"
 import { Log, Filesystem, ToolCompat } from "@/util"
 import { Agent } from "@/agent/agent"
+import { Plugin } from "../plugin"
 import type { ModelID, ProviderID } from "../provider/schema"
 import { MessageV2 } from "../session/message-v2"
 import { evalScript, type HostFn } from "../workflow/sandbox"
@@ -500,6 +501,7 @@ export const ToolScriptTool = Tool.define(
   Effect.gen(function* () {
     const truncate = yield* Truncate.Service
     const agents = yield* Agent.Service
+    const plugin = yield* Plugin.Service
     return {
       description: DESCRIPTION,
       parameters: z.object({
@@ -867,17 +869,53 @@ export const ToolScriptTool = Tool.define(
                   }
                 }),
               )
+            // PI-134 (scaffold): builtin tool calls dispatched from inside an exec
+            // sandbox previously called `def.execute()` directly, bypassing
+            // `plugin.trigger("tool.execute.before"/"tool.execute.after", ...)`
+            // entirely — unlike the MCP branch just above (`executeMcp`), which
+            // already runs through SessionPrompt's wrapped executes ("the full
+            // direct-call pipeline applies unchanged"). Since GPT_TOP_LEVEL_TOOLS
+            // advertises only {exec, wait} to GPT/Codex-family models, EVERY
+            // builtin write tool (apply_patch/write/edit/bash/...) for those models
+            // is invoked exclusively through this nested path — meaning
+            // plugin-level write gates (session delegation enforcement, secret-
+            // write guards, TDD/Outcome-gate write detection) never fired for
+            // GPT/Codex models at all after the exec/tool_script surface replaced
+            // per-tool top-level advertising. Mirrors the MCP branch's plugin hook
+            // semantics exactly, including cancel handling.
             const executeBuiltin = def
-              ? def.execute(toolArgs, subCtx).pipe(
-                  Effect.map((result): ExecNestedResult => ({
+              ? Effect.gen(function* () {
+                  const beforeOutput: { args: unknown; cancel?: boolean; cancelReason?: string } = {
+                    args: toolArgs,
+                  }
+                  yield* plugin.trigger(
+                    "tool.execute.before",
+                    { tool: id, sessionID: ctx.sessionID, callID },
+                    beforeOutput,
+                  )
+                  if (beforeOutput.cancel) {
+                    return {
+                      title: "Cancelled",
+                      output: beforeOutput.cancelReason || "Tool call cancelled by hook",
+                      metadata: { cancelled: true },
+                    } satisfies ExecNestedResult
+                  }
+                  const result = yield* def.execute(beforeOutput.args as typeof toolArgs, subCtx)
+                  const output: ExecNestedResult = {
                     title: result.title,
                     output: result.output,
                     metadata: result.metadata,
                     attachments: normalizeAttachments(result.attachments),
                     providerOutput: (result as { providerOutput?: unknown }).providerOutput,
                     providerMetadata: (result as { providerMetadata?: Record<string, unknown> }).providerMetadata,
-                  })),
-                )
+                  }
+                  yield* plugin.trigger(
+                    "tool.execute.after",
+                    { tool: id, sessionID: ctx.sessionID, callID, args: beforeOutput.args },
+                    output,
+                  )
+                  return output
+                })
               : executeMcp(mcpDef!)
             return withSlot(() =>
               bridge
