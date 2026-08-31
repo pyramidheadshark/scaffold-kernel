@@ -155,6 +155,13 @@ function makeLayer() {
     Layer.provide(History.defaultLayer),
     Layer.provide(TaskRegistry.defaultLayer),
     Layer.provide(Auth.defaultLayer),
+    // scaffold PI-62/PI-129: GoalTool (builtin, registered inside ToolRegistry.layer)
+    // requires Goal.Service. ToolRegistry.defaultLayer already provides this (see
+    // registry.ts) but this test builds the raw ToolRegistry.layer directly and never
+    // supplied it — the unmet requirement was masked by the registry.ts 21-arg .pipe()
+    // overflow (TS2554 widened the whole layer to `unknown`, which vacuously "satisfied"
+    // everything); fixing that overflow turned this pre-existing gap into a real error.
+    Layer.provide(Goal.defaultLayer),
     Layer.provideMerge(todo),
     Layer.provideMerge(question),
     Layer.provideMerge(deps),
