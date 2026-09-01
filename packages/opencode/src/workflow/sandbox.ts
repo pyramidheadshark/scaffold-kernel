@@ -90,6 +90,49 @@ globalThis.URL = class URL {
   }
   toString() { return this.protocol + "//" + this.host + this.pathname + this.search + this.hash; }
 };
+// scaffold PI: bare QuickJS has no Web btoa/atob (found via a live tool_script
+// call attempting base64 encode/decode inside exec — ReferenceError). Pure,
+// deterministic, no host dependency — same category as the URL polyfill above.
+// Matches Web API semantics: btoa throws on chars outside Latin1 (\\u0000-\\u00FF).
+globalThis.btoa = function (input) {
+  const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const str = String(input);
+  for (let i = 0; i < str.length; i++) {
+    if (str.charCodeAt(i) > 255) throw new Error("InvalidCharacterError: string contains characters outside of the Latin1 range");
+  }
+  let out = "";
+  for (let i = 0; i < str.length; i += 3) {
+    const a = str.charCodeAt(i);
+    const bHas = i + 1 < str.length;
+    const cHas = i + 2 < str.length;
+    const b = bHas ? str.charCodeAt(i + 1) : 0;
+    const c = cHas ? str.charCodeAt(i + 2) : 0;
+    const triplet = (a << 16) | (b << 8) | c;
+    out += B64[(triplet >> 18) & 0x3f];
+    out += B64[(triplet >> 12) & 0x3f];
+    out += bHas ? B64[(triplet >> 6) & 0x3f] : "=";
+    out += cHas ? B64[triplet & 0x3f] : "=";
+  }
+  return out;
+};
+globalThis.atob = function (input) {
+  const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const str = String(input).replace(/=+$/, "");
+  let out = "";
+  let buffer = 0;
+  let bits = 0;
+  for (let i = 0; i < str.length; i++) {
+    const idx = B64.indexOf(str[i]);
+    if (idx === -1) throw new Error("InvalidCharacterError: invalid base64 character");
+    buffer = (buffer << 6) | idx;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out += String.fromCharCode((buffer >> bits) & 0xff);
+    }
+  }
+  return out;
+};
 `
 
 /**
