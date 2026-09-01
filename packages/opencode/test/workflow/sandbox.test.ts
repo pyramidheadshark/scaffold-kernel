@@ -310,3 +310,34 @@ describe("Sandbox URL polyfill", () => {
     expect(result).toEqual(["example.com/a", "example.com/a", "garbage"])
   })
 })
+
+describe("Sandbox btoa/atob polyfill", () => {
+  test("btoa/atob round-trip matches Web API semantics", async () => {
+    const result = await evalScript(
+      `return ["", "a", "ab", "abc", "hello world"].map(s => atob(btoa(s)))`,
+      {},
+    )
+    expect(result).toEqual(["", "a", "ab", "abc", "hello world"])
+  })
+
+  test("btoa output matches known base64 encoding", async () => {
+    const result = await evalScript(`return btoa("hello world")`, {})
+    expect(result).toBe("aGVsbG8gd29ybGQ=")
+  })
+
+  test("btoa throws on characters outside the Latin1 range", async () => {
+    const result = await evalScript(
+      `try { btoa("Привет"); return "no-throw" } catch (e) { return e.message.includes("InvalidCharacterError") }`,
+      {},
+    )
+    expect(result).toBe(true)
+  })
+
+  test("atob throws on invalid base64 characters", async () => {
+    const result = await evalScript(
+      `try { atob("not!base64"); return "no-throw" } catch (e) { return e.message.includes("InvalidCharacterError") }`,
+      {},
+    )
+    expect(result).toBe(true)
+  })
+})
