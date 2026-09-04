@@ -600,10 +600,43 @@ export const layer: Layer.Layer<
             ctx.assistantMessage.finish = value.finishReason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
+            // Scaffold: порядок изменён — сначала patch(), потом при необходимости track().
+            //
+            // Раньше на каждом finish-step шли ДВА подряд add() по одному и тому же дереву:
+            // сначала track() (add + write-tree), затем patch() (add + diff --cached). При
+            // этом если patch.files пуст, дерево не менялось с момента ctx.snapshot, и
+            // write-tree по построению вернул бы РОВНО ctx.snapshot — то есть первый вызов
+            // был арифметически тождественным no-op.
+            //
+            // Замер по реальной базе: patch-партов 3625 на 13553 step-finish, то есть 73%
+            // вызовов track() на этой ветке были холостыми; в отдельной 8-часовой сессии —
+            // 1225 снапшотов рабочего дерева. Поведение при этом не меняется ни на байт:
+            // те же хеши, те же парты, тот же diff, тот же откат файлов.
+            let stepFilesChanged = 0
+            let stepSnapshot: string | undefined
+            let pendingPatch: { hash: string; files: string[] } | undefined
+            if (ctx.snapshot) {
+              const patch = yield* snapshot.patch(ctx.snapshot)
+              stepFilesChanged = patch.files.length
+              if (patch.files.length) {
+                pendingPatch = { hash: patch.hash, files: [...patch.files] }
+                stepSnapshot = yield* snapshot.track()
+              } else {
+                stepSnapshot = ctx.snapshot
+              }
+              ctx.snapshot = undefined
+            } else {
+              // Без базового снимка сравнивать не с чем — ведём себя как раньше.
+              stepSnapshot = yield* snapshot.track()
+            }
+            // Порядок создания частей сохранён в точности: сначала step-finish, затем
+            // patch. Меняется только МОМЕНТ вычисления снимка, не последовательность
+            // записей — иначе у patch-парта оказался бы меньший PartID, чем у
+            // step-finish, и это была бы уже наблюдаемая разница.
             yield* session.updatePart({
               id: PartID.ascending(),
               reason: value.finishReason,
-              snapshot: yield* snapshot.track(),
+              snapshot: stepSnapshot,
               messageID: ctx.assistantMessage.id,
               sessionID: ctx.assistantMessage.sessionID,
               type: "step-finish",
@@ -611,21 +644,15 @@ export const layer: Layer.Layer<
               cost: usage.cost,
             })
             yield* session.updateMessage(ctx.assistantMessage)
-            let stepFilesChanged = 0
-            if (ctx.snapshot) {
-              const patch = yield* snapshot.patch(ctx.snapshot)
-              stepFilesChanged = patch.files.length
-              if (patch.files.length) {
-                yield* session.updatePart({
-                  id: PartID.ascending(),
-                  messageID: ctx.assistantMessage.id,
-                  sessionID: ctx.sessionID,
-                  type: "patch",
-                  hash: patch.hash,
-                  files: patch.files,
-                })
-              }
-              ctx.snapshot = undefined
+            if (pendingPatch) {
+              yield* session.updatePart({
+                id: PartID.ascending(),
+                messageID: ctx.assistantMessage.id,
+                sessionID: ctx.sessionID,
+                type: "patch",
+                hash: pendingPatch.hash,
+                files: pendingPatch.files,
+              })
             }
             const stepTokensIn = usage.tokens.input + usage.tokens.cache.read + usage.tokens.cache.write
             const stepTokensOut = usage.tokens.output + usage.tokens.reasoning

@@ -490,6 +490,8 @@ export const dict = {
   "tui.command.session.conceal.enable": "Activer le masquage du code",
   "tui.command.session.timestamps.show": "Afficher les horodatages",
   "tui.command.session.timestamps.hide": "Masquer les horodatages",
+  "tui.session.reasoning.thinking": "Réflexion",
+  "tui.session.reasoning.thought": "Pensée",
   "tui.command.session.thinking.expand": "Développer la réflexion",
   "tui.command.session.thinking.collapse": "Réduire la réflexion",
   "tui.command.session.tool_details.show": "Afficher les détails des outils",

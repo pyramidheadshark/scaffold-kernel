@@ -482,6 +482,8 @@ export const dict = {
   "tui.command.session.conceal.enable": "開啟程式碼隱藏",
   "tui.command.session.timestamps.show": "顯示時間戳記",
   "tui.command.session.timestamps.hide": "隱藏時間戳記",
+  "tui.session.reasoning.thinking": "思考中",
+  "tui.session.reasoning.thought": "思考",
   "tui.command.session.thinking.expand": "展開思考過程",
   "tui.command.session.thinking.collapse": "摺疊思考過程",
   "tui.command.session.tool_details.show": "顯示工具詳細資料",

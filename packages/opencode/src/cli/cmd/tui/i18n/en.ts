@@ -469,6 +469,8 @@ export const dict: Record<string, string> = {
   "tui.command.session.conceal.enable": "Enable code concealment",
   "tui.command.session.timestamps.show": "Show timestamps",
   "tui.command.session.timestamps.hide": "Hide timestamps",
+  "tui.session.reasoning.thinking": "Thinking",
+  "tui.session.reasoning.thought": "Thought",
   "tui.command.session.thinking.expand": "Expand thinking",
   "tui.command.session.thinking.collapse": "Collapse thinking",
   "tui.command.session.tool_details.show": "Show tool details",
