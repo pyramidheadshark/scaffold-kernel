@@ -480,6 +480,8 @@ export const dict = {
   "tui.command.session.conceal.enable": "Habilitar ocultación de código",
   "tui.command.session.timestamps.show": "Mostrar marcas de tiempo",
   "tui.command.session.timestamps.hide": "Ocultar marcas de tiempo",
+  "tui.session.reasoning.thinking": "Pensando",
+  "tui.session.reasoning.thought": "Pensamiento",
   "tui.command.session.thinking.expand": "Expandir razonamiento",
   "tui.command.session.thinking.collapse": "Colapsar razonamiento",
   "tui.command.session.tool_details.show": "Mostrar detalles de herramientas",

@@ -441,6 +441,8 @@ export const dict = {
   "tui.command.session.conceal.enable": "コード隠蔽を有効化",
   "tui.command.session.timestamps.show": "タイムスタンプを表示",
   "tui.command.session.timestamps.hide": "タイムスタンプを非表示",
+  "tui.session.reasoning.thinking": "思考中",
+  "tui.session.reasoning.thought": "思考",
   "tui.command.session.thinking.expand": "思考過程を展開",
   "tui.command.session.thinking.collapse": "思考過程を折りたたむ",
   "tui.command.session.tool_details.show": "ツール詳細を表示",

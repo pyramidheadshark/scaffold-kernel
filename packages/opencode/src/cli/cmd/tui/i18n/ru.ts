@@ -483,6 +483,8 @@ export const dict = {
   "tui.command.session.conceal.enable": "Включить скрытие кода",
   "tui.command.session.timestamps.show": "Показать метки времени",
   "tui.command.session.timestamps.hide": "Скрыть метки времени",
+  "tui.session.reasoning.thinking": "Думаю",
+  "tui.session.reasoning.thought": "Мысль",
   "tui.command.session.thinking.expand": "Развернуть рассуждения",
   "tui.command.session.thinking.collapse": "Свернуть рассуждения",
   "tui.command.session.tool_details.show": "Показать детали инструментов",

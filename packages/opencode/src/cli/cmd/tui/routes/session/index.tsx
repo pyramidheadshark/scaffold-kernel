@@ -2188,6 +2188,11 @@ function ReasoningHeader(props: {
   title: string | null
   duration?: string
 }) {
+  // Scaffold: заголовок блока рассуждений был захардкожен по-английски и не имел
+  // i18n-ключей вовсе, из-за чего в полностью локализованном интерфейсе оставалась
+  // единственная английская строка на каждый шаг агента.
+  const reasoningLabels = useLanguage()
+
   const { theme } = useTheme()
   const fg = () =>
     props.open
@@ -2198,7 +2203,11 @@ function ReasoningHeader(props: {
     <Switch>
       <Match when={!props.done}>
         <box flexDirection="row">
-          <Spinner color={fg()}>{props.title ? "Thinking: " + props.title : "Thinking"}</Spinner>
+          <Spinner color={fg()}>
+            {props.title
+              ? reasoningLabels.t("tui.session.reasoning.thinking") + ": " + props.title
+              : reasoningLabels.t("tui.session.reasoning.thinking")}
+          </Spinner>
         </box>
       </Match>
       <Match when={true}>
@@ -2206,7 +2215,7 @@ function ReasoningHeader(props: {
           <Show when={props.toggleable}>
             <span>{props.open ? "- " : "+ "}</span>
           </Show>
-          <span>Thought</span>
+          <span>{reasoningLabels.t("tui.session.reasoning.thought")}</span>
           <Show when={props.title || props.duration}>
             <span>: </span>
           </Show>
