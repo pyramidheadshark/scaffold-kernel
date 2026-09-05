@@ -28,6 +28,7 @@ import { BashTool } from "../../tool/bash"
 import { Locale } from "../../util"
 import { AppRuntime } from "@/effect/app-runtime"
 import { createCompletionTracker, type CompletionTracker } from "./run-completion"
+import { readMessageFromStdin } from "./stdin-message"
 
 type ToolProps<T> = {
   input: Tool.InferParameters<T>
@@ -401,7 +402,16 @@ export const RunCommand = cmd({
       }
     }
 
-    if (!process.stdin.isTTY) message += "\n" + (await Bun.stdin.text())
+    // stdin is read ONLY when it is the sole source of the message — see
+    // stdin-message.ts. Previously this was unconditional for a non-TTY stdin, and
+    // an idle open pipe (agent harness, cron wrapper) blocked the run forever
+    // before a session existed: no output, no database row, no CPU.
+    const piped = await readMessageFromStdin({
+      argument: message,
+      isTTY: Boolean(process.stdin.isTTY),
+      read: () => Bun.stdin.text(),
+    })
+    if (piped !== undefined) message = piped
 
     if (message.trim().length === 0 && !args.command) {
       UI.error("You must provide a message or a command")
