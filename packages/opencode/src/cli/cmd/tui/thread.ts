@@ -1,4 +1,5 @@
 import { cmd } from "@/cli/cmd/cmd"
+import { readMessageFromStdin } from "@/cli/cmd/stdin-message"
 import { tui } from "./app"
 import { Rpc } from "@/util"
 import { type rpc } from "./worker"
@@ -61,10 +62,15 @@ async function target() {
 }
 
 async function input(value?: string) {
-  const piped = process.stdin.isTTY ? undefined : await Bun.stdin.text()
-  if (!value) return piped
-  if (!piped) return value
-  return piped + "\n" + value
+  // Same rule as `run` (see cli/cmd/stdin-message.ts): stdin is drained only when
+  // no message argument was given. An idle open pipe used to block the TUI here
+  // before the interface ever appeared — rare only because a terminal gives a TTY.
+  const piped = await readMessageFromStdin({
+    argument: value,
+    isTTY: Boolean(process.stdin.isTTY),
+    read: () => Bun.stdin.text(),
+  })
+  return piped ?? value
 }
 
 async function promptWorkspaceTrust(directory: string, level: "untrusted" | "dangerous"): Promise<boolean> {
