@@ -52,6 +52,54 @@ async function enableDangerousDeleteApproval(
   }
 }
 
+/**
+ * Turn on never-ask for the duration of a headless run, and restore it after.
+ *
+ * Scaffold, 2026-09-06. `run` creates its session with `question: deny` and
+ * `plan_exit: deny` rules (below) — and neither rule is ever evaluated.
+ * QuestionTool (tool/question.ts) and PlanExitTool (tool/plan.ts) both call
+ * `question.ask(...)` directly; neither goes through `ctx.ask({ permission })`,
+ * and a grep for `permission: "question"` finds only the two producers (here and
+ * github.ts) and no consumer at all. Meanwhile `Question.ask` waits on a bare
+ * `Deferred.await` with no timeout, and `run` subscribes to `permission.asked`
+ * but never to `question.asked`. So the first question tool call in a headless
+ * run waits forever: no prompt, no output, no exit. It has not happened yet —
+ * a latent trap, not an observed outage.
+ *
+ * never-ask is the kernel's own answer to exactly this: the tool stays visible
+ * (so the model keeps routing decisions through it) but returns a [Never-Ask]
+ * directive telling the model to pick the option that suits unattended
+ * execution and to say which one it picked. Deliberately NOT a timeout — a
+ * timeout would also fire in the TUI, where waiting is correct: an operator
+ * stepping away for an hour is not a defect.
+ *
+ * Save-and-restore, in the same shape as enableDangerousDeleteApproval, because
+ * never-ask is instance-wide: under `--attach` this run shares a server with
+ * whoever else is on it, so it must hand the state back exactly as found.
+ */
+export async function enableNeverAsk(sdk: Pick<OpencodeClient, "question">) {
+  const previous = await sdk.question
+    .neverAsk(undefined, { throwOnError: true })
+    .then((r) => r.data === true)
+    .catch(() => undefined)
+  // Unknown previous state ⇒ do not touch it. Turning never-ask on without
+  // being able to turn it back off is worse than the latent hang it prevents.
+  if (previous === undefined || previous) return async () => {}
+
+  const enabled = await sdk.question
+    .setNeverAsk({ enabled: true }, { throwOnError: true })
+    .then(() => true)
+    .catch(() => false)
+  if (!enabled) return async () => {}
+
+  const state = { restored: false }
+  return async () => {
+    if (state.restored) return
+    state.restored = true
+    await sdk.question.setNeverAsk({ enabled: false }).catch(() => {})
+  }
+}
+
 function props<T>(part: ToolPart): ToolProps<T> {
   const state = part.state
   return {
@@ -365,6 +413,10 @@ export const RunCommand = cmd({
       await Log.exit(1)
     }
 
+    // These two rules are INERT — see enableNeverAsk above for why (no tool ever
+    // routes `question` or `plan_exit` through the permission system). Kept so the
+    // ruleset shape stays identical to sessions created by older builds; the actual
+    // headless protection is enableNeverAsk.
     const rules: Permission.Ruleset = [
       {
         permission: "question",
@@ -447,7 +499,7 @@ export const RunCommand = cmd({
       const events = await sdk.event.subscribe()
       let error: string | undefined
 
-      async function loop(tracker: CompletionTracker, restoreDangerousDeleteApproval: () => Promise<void>) {
+      async function loop(tracker: CompletionTracker, restoreRunOverrides: () => Promise<void>) {
         const toggles = new Map<string, boolean>()
         const log = Log.create({ service: "cli.run" })
 
@@ -578,7 +630,7 @@ export const RunCommand = cmd({
         } finally {
           tracker.stop()
           await iter.return?.(undefined).catch(() => {})
-          await restoreDangerousDeleteApproval()
+          await restoreRunOverrides()
         }
       }
 
@@ -667,12 +719,17 @@ export const RunCommand = cmd({
         },
       })
 
-      const restoreDangerousDeleteApproval = await enableDangerousDeleteApproval(
+      const restoreDeleteApproval = await enableDangerousDeleteApproval(
         sdk,
         args["dangerously-skip-permissions"],
       )
+      const restoreNeverAsk = await enableNeverAsk(sdk)
+      const restoreRunOverrides = async () => {
+        await restoreDeleteApproval()
+        await restoreNeverAsk()
+      }
 
-      loop(tracker, restoreDangerousDeleteApproval).catch(async (e) => {
+      loop(tracker, restoreRunOverrides).catch(async (e) => {
         console.error(e)
         await Log.exit(1)
       })
@@ -701,7 +758,7 @@ export const RunCommand = cmd({
         }
         tracker.markStarted()
       } catch (error) {
-        await restoreDangerousDeleteApproval()
+        await restoreRunOverrides()
         throw error
       }
     }

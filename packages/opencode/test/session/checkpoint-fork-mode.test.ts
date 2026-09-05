@@ -34,8 +34,26 @@ const ref = {
 // captureLog captures the prefix-capture function calls (agentName + msgs[0] info).
 // settle: when true, actor.spawn settles outcome with success immediately so the
 // settle watcher fires deterministically (mirrors checkpoint-child-session.test.ts).
-const spawnLog: { count: number; lastInput?: { sessionID: string; mode: string; forkContext?: unknown } } = { count: 0 }
-const captureLog: { calls: Array<{ sessionID: string; agentName: string; msgsLen: number; firstMsgRole?: string; firstMsgID?: string }> } = { calls: [] }
+const spawnLog: {
+  count: number
+  lastInput?: {
+    sessionID: string
+    mode: string
+    forkContext?: unknown
+    model?: { providerID: string; modelID: string }
+  }
+} = { count: 0 }
+const captureLog: {
+  calls: Array<{
+    sessionID: string
+    agentName: string
+    msgsLen: number
+    firstMsgRole?: string
+    firstMsgID?: string
+    providerID?: string
+    modelID?: string
+  }>
+} = { calls: [] }
 
 // Actor stub: records spawn input (incl. forkContext) and settles outcome with
 // success immediately so the writer doesn't hang the test.
@@ -49,7 +67,12 @@ const recordingActor = Layer.effect(
         Effect.gen(function* () {
           counter += 1
           spawnLog.count = counter
-          spawnLog.lastInput = { sessionID: input.sessionID, mode: input.mode, forkContext: input.forkContext }
+          spawnLog.lastInput = {
+            sessionID: input.sessionID,
+            mode: input.mode,
+            forkContext: input.forkContext,
+            model: input.model,
+          }
           const outcome = yield* Deferred.make<AgentOutcome>()
           yield* Deferred.succeed(outcome, { status: "success", finalText: "ok" })
           return {
@@ -85,6 +108,8 @@ function installRecordingCapture() {
         msgsLen: input.msgs.length,
         firstMsgRole: first?.role,
         firstMsgID: first?.id,
+        providerID: input.providerID,
+        modelID: input.modelID,
       })
       return {
         system: ["sys-canned"],
@@ -570,6 +595,90 @@ describe("checkpoint writer forkContext shape per mode", () => {
           // actor.spawn must not have been invoked either (the empty-delta
           // short-circuit is BEFORE session.create / actor.spawn).
           expect(spawnLog.count).toBe(0)
+        }),
+      { config: { checkpoint: { fork: false } } },
+    ),
+  )
+})
+
+// Scaffold, 2026-09-06. The writer's model used to be the parent's, always:
+// `agent["checkpoint-writer"].model` reached the config and was dropped at the
+// spawn call site. The pure resolution is unit-tested in
+// checkpoint-writer-model.test.ts; these cases prove the WIRING — that the
+// resolved model actually reaches Actor.spawn AND the prefix build, which a
+// green pure function on its own would not show.
+describe("checkpoint writer model per fork mode", () => {
+  it.live(
+    "fork:false — the configured model reaches BOTH actor.spawn and the prefix build",
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          yield* reset
+          installRecordingCapture()
+
+          const svc = yield* SessionCheckpoint.Service
+          const { info } = yield* seedFourMessages()
+
+          const outcome = yield* svc.tryStartCheckpointWriter({
+            sessionID: info.id,
+            model: { providerID: "test", modelID: "test-model" },
+            promptOps: {} as never,
+          })
+          expect(outcome).toBe("started")
+
+          expect(spawnLog.lastInput?.model).toEqual({ providerID: "lite", modelID: "cheap-model" })
+          // The prefix build must agree — spawning on one model with a prefix
+          // built for another is the split brain this patch must not create.
+          expect(captureLog.calls[0]?.providerID).toBe("lite")
+          expect(captureLog.calls[0]?.modelID).toBe("cheap-model")
+        }),
+      { config: { checkpoint: { fork: false }, agent: { "checkpoint-writer": { model: "lite/cheap-model" } } } },
+    ),
+  )
+
+  it.live(
+    "fork:true — the configured model is NOT applied: the fork exists to reuse the parent's per-model prompt cache",
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          yield* reset
+          installRecordingCapture()
+
+          const svc = yield* SessionCheckpoint.Service
+          const { info } = yield* seedFourMessages()
+
+          const outcome = yield* svc.tryStartCheckpointWriter({
+            sessionID: info.id,
+            model: { providerID: "test", modelID: "test-model" },
+            promptOps: {} as never,
+          })
+          expect(outcome).toBe("started")
+
+          expect(spawnLog.lastInput?.model).toEqual({ providerID: "test", modelID: "test-model" })
+          expect(captureLog.calls[0]?.providerID).toBe("test")
+        }),
+      { config: { agent: { "checkpoint-writer": { model: "lite/cheap-model" } } } },
+    ),
+  )
+
+  it.live(
+    "no configuration — the parent's model, exactly as before the patch",
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          yield* reset
+          installRecordingCapture()
+
+          const svc = yield* SessionCheckpoint.Service
+          const { info } = yield* seedFourMessages()
+
+          yield* svc.tryStartCheckpointWriter({
+            sessionID: info.id,
+            model: { providerID: "test", modelID: "test-model" },
+            promptOps: {} as never,
+          })
+
+          expect(spawnLog.lastInput?.model).toEqual({ providerID: "test", modelID: "test-model" })
         }),
       { config: { checkpoint: { fork: false } } },
     ),
