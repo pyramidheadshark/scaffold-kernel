@@ -40,6 +40,7 @@ import type { LastMessageInfo } from "./last-message-info"
 import { CHECKPOINT_TEMPLATE, MEMORY_TEMPLATE, NOTES_TEMPLATE, CHECKPOINT_SECTION_BUDGETS } from "./checkpoint-templates"
 import { adjustBoundaryForApiInvariants } from "./boundary"
 import { alignToNonToolResultUser } from "./checkpoint-align"
+import { resolveWriterModel } from "./checkpoint-writer-model"
 import { loadPriorDiscoveredTitles } from "./checkpoint-retry"
 import * as CheckpointContext from "./checkpoint-context"
 import { buildProgressDiff } from "./checkpoint-progress-reconcile"
@@ -805,6 +806,25 @@ export const layer: Layer.Layer<
       const cfg = yield* config.get()
       const forkMode = cfg.checkpoint?.fork ?? true
 
+      // Scaffold, 2026-09-06: the writer used to run on the PARENT's model
+      // unconditionally — `agent["checkpoint-writer"].model` reached the config,
+      // was resolved by the agent registry, and was then thrown away right here.
+      // Rationale and the fork:true coupling live in checkpoint-writer-model.ts.
+      const writerModelChoice = resolveWriterModel({
+        agents: cfg.agent as Record<string, { model?: unknown } | undefined> | undefined,
+        parentModel: input.model,
+        forkMode,
+      })
+      const writerModel = writerModelChoice.model
+      if (writerModelChoice.ignoredBecauseFork) {
+        log.info("checkpoint-writer model configured but ignored under checkpoint.fork:true", {
+          sessionID: input.sessionID,
+          configured: `${writerModelChoice.configured!.providerID}/${writerModelChoice.configured!.modelID}`,
+          parent: `${input.model.providerID}/${input.model.modelID}`,
+          why: "fork:true replays the parent prefix for prompt-cache reuse; a different model would make every checkpoint a cold read. Set checkpoint.fork:false to use the configured model.",
+        })
+      }
+
       const parentRow = yield* Effect.sync(() =>
         Database.use((d) =>
           d.select({ last: SessionTable.last_checkpoint_message_id })
@@ -923,8 +943,8 @@ export const layer: Layer.Layer<
             const writerPrefix = yield* buildPrefix({
               sessionID: input.sessionID,
               agentName: "checkpoint-writer",
-              providerID: input.model.providerID,
-              modelID: input.model.modelID,
+              providerID: writerModel.providerID,
+              modelID: writerModel.modelID,
               msgs: delta,
             })
 
@@ -935,8 +955,8 @@ export const layer: Layer.Layer<
               parentPermission: writerPrefix.parentPermission,
               watermarkMsgID: endMessageID as MessageID,
               model: {
-                providerID: input.model.providerID as ProviderID,
-                modelID: input.model.modelID as ModelID,
+                providerID: writerModel.providerID as ProviderID,
+                modelID: writerModel.modelID as ModelID,
               },
             } satisfies ForkContext
           })
@@ -986,8 +1006,8 @@ export const layer: Layer.Layer<
         context: "full",
         tools: ["read", "write", "edit", "apply_patch", "glob", "grep", "task"],
         model: {
-          providerID: input.model.providerID as ProviderID,
-          modelID: input.model.modelID as ModelID,
+          providerID: writerModel.providerID as ProviderID,
+          modelID: writerModel.modelID as ModelID,
         },
         background: true,
         forkContext: forkCtx,

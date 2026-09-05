@@ -10,6 +10,7 @@ import { Session } from "../session"
 import { SessionID, MessageID, PartID } from "../session/schema"
 import { MessageV2 } from "../session/message-v2"
 import { Agent } from "../agent/agent"
+import { isSpawnableMode } from "../agent/spawnable"
 import { Provider } from "../provider"
 import { sortVisionModels } from "../provider/provider"
 import type { SessionPrompt } from "../session/prompt"
@@ -359,7 +360,7 @@ export const ActorTool = Tool.define(
     // wired into ToolRegistry's layer.
     return Effect.fn("ActorTool.init")(function* () {
       // F36a: build subagent_type as a dynamic z.enum from the agent registry,
-      // filtered to spawnable agents (mode === "subagent" && !hidden). Excludes
+      // filtered to spawnable agents (isSpawnableMode && !hidden). Excludes
       // hidden internals (title, summary, checkpoint-writer per F24) and
       // includes both native registry agents (general/explore) and
       // user-config-defined subagents. This gives the LLM a discoverable,
@@ -367,7 +368,15 @@ export const ActorTool = Tool.define(
       // that the model couldn't introspect (root cause of three harness runs
       // with zero subagent spawns).
       const allAgents = yield* agent.list()
-      const spawnable = allAgents.filter((a) => a.mode === "subagent" && !a.hidden)
+      // `mode === "all"` counts, and that is the whole point: agent.ts stamps
+      // "all" on every config-defined agent whose config does not say otherwise,
+      // so filtering on "subagent" alone silently drops exactly the roles a user
+      // just declared — they vanish from this enum and `actor spawn <role>` either
+      // fails zod validation or is misrouted to whatever is left eligible. That is
+      // the observed failure PI-137 (build/explore/review/plan unreachable in the
+      // TUI), worked around downstream ever since by stamping mode:"subagent" onto
+      // every spawn target. See agent/spawnable.ts.
+      const spawnable = allAgents.filter((a) => isSpawnableMode(a.mode) && !a.hidden)
       const spawnableNames = spawnable.map((a) => a.name)
       if (spawnableNames.length === 0) {
         return yield* Effect.die(new Error("No spawnable subagent types"))

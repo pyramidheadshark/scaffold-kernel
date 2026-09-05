@@ -16,6 +16,7 @@ import * as ActorEvents from "@/actor/events"
 import { runTurn } from "@/actor/turn"
 import { spawnRef } from "@/actor/spawn-ref"
 import { SYSTEM_SPAWNED_AGENT_TYPES } from "@/agent/config"
+import { isSpawnableMode } from "@/agent/spawnable"
 import { Bus } from "@/bus"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import { MessageV2 } from "@/session/message-v2"
@@ -872,8 +873,12 @@ export const layer = Layer.effect(
       // Agents with an explicit completionGate keep this behavior even when
       // they also provide a dedicated system prompt.
       const agentInfo = yield* agents.get(input.agentType)
+      // isSpawnableMode, not a second copy of `mode === "subagent"`: whatever the
+      // actor tool is allowed to spawn must also take part in the subagent
+      // lifecycle, or a config-defined agent (whose mode defaults to "all") would
+      // be spawnable and yet never told how to report back.
       const gateEligible =
-        agentInfo?.mode === "subagent" &&
+        isSpawnableMode(agentInfo?.mode) &&
         (agentInfo.completionGate === true || (!agentInfo.prompt && input.agentType !== "checkpoint-writer"))
       const taskWithFormat = gateEligible ? input.task + RETURN_FORMAT_INSTRUCTION : input.task
 
