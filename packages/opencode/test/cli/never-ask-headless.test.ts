@@ -32,9 +32,20 @@ function fakeSdk(opts: { initial?: boolean; getThrows?: boolean; setThrows?: boo
 }
 
 describe("enableNeverAsk", () => {
+  it("под --attach не трогает инстанс ВООБЩЕ — там чужой сервер и, возможно, живой TUI", async () => {
+    // never-ask инстанс-широкий. Восстановление в конце ущерб не отменяет: пока идёт
+    // прогон, у человека question-тул перестаёт спрашивать. Плюс два параллельных
+    // прогона гасят защиту друг другу, а падение оставляет флаг поднятым бессрочно.
+    const f = fakeSdk({ initial: false })
+    const restore = await enableNeverAsk(f.sdk, true)
+    await restore()
+    expect(f.calls).toEqual([])
+    expect(f.read()).toBe(false)
+  })
+
   it("turns never-ask on, and the returned restore turns it back off", async () => {
     const f = fakeSdk({ initial: false })
-    const restore = await enableNeverAsk(f.sdk)
+    const restore = await enableNeverAsk(f.sdk, false)
     expect(f.read()).toBe(true)
     await restore()
     expect(f.read()).toBe(false)
@@ -42,7 +53,7 @@ describe("enableNeverAsk", () => {
 
   it("leaves an already-on instance alone — restoring would turn OFF what someone else turned on", async () => {
     const f = fakeSdk({ initial: true })
-    const restore = await enableNeverAsk(f.sdk)
+    const restore = await enableNeverAsk(f.sdk, false)
     await restore()
     expect(f.read()).toBe(true)
     expect(f.calls.some((c) => c.op === "set")).toBe(false)
@@ -52,21 +63,21 @@ describe("enableNeverAsk", () => {
     // Turning never-ask on without being able to put it back is worse than the
     // latent hang it prevents: an attached TUI would silently stop asking.
     const f = fakeSdk({ getThrows: true })
-    const restore = await enableNeverAsk(f.sdk)
+    const restore = await enableNeverAsk(f.sdk, false)
     await restore()
     expect(f.calls.filter((c) => c.op === "set")).toEqual([])
   })
 
   it("does not promise a restore it cannot perform when enabling fails", async () => {
     const f = fakeSdk({ initial: false, setThrows: true })
-    const restore = await enableNeverAsk(f.sdk)
+    const restore = await enableNeverAsk(f.sdk, false)
     await restore()
     expect(f.calls.filter((c) => c.op === "set").length).toBe(1)
   })
 
   it("is idempotent: calling restore twice issues one disable", async () => {
     const f = fakeSdk({ initial: false })
-    const restore = await enableNeverAsk(f.sdk)
+    const restore = await enableNeverAsk(f.sdk, false)
     await restore()
     await restore()
     expect(f.calls.filter((c) => c.op === "set" && c.enabled === false).length).toBe(1)
