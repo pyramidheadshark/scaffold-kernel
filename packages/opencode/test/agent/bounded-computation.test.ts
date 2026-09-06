@@ -25,12 +25,31 @@ describe("isBoundedComputationAgent", () => {
     }
   })
 
-  // Pins the population, not a number: a bare `.size` assertion goes red on the
-  // correct fix and green on a wrong one of the same length.
-  test("the set is exactly the runtime-spawned agents plus the two helpers", () => {
-    expect([...BOUNDED_COMPUTATION_AGENTS].sort()).toEqual(
-      [...SYSTEM_SPAWNED_AGENT_TYPES, "title", "summary"].sort(),
-    )
+  // ⚠ This assertion is a LITERAL on purpose, and the reason is a defect this very test
+  // shipped with. It first read `toEqual([...SYSTEM_SPAWNED_AGENT_TYPES, "title", "summary"])`
+  // — the same expression the implementation is built from. Both sides moved together, so
+  // deleting `dream` from the registry left the suite green while the set silently lost it:
+  // exactly the regression the commit above this one was written to prevent, invisible again.
+  //
+  // A test whose expectation is computed the way the code is computed pins the expression,
+  // not the population. Spelling the names out is the only form that can go red.
+  test("the set is exactly these five agents", () => {
+    expect([...BOUNDED_COMPUTATION_AGENTS].sort()).toEqual([
+      "checkpoint-writer",
+      "distill",
+      "dream",
+      "summary",
+      "title",
+    ])
+  })
+
+  // The literal above must not drift from the registry it is derived from either: if
+  // someone adds a runtime-spawned agent, this fails and forces a decision instead of
+  // letting the new agent silently miss the exemption.
+  test("every runtime-spawned agent is present in that literal", () => {
+    for (const name of SYSTEM_SPAWNED_AGENT_TYPES) {
+      expect([...BOUNDED_COMPUTATION_AGENTS]).toContain(name)
+    }
   })
 
   test("compaction is absent on purpose — it never reaches this predicate", () => {
