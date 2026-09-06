@@ -54,3 +54,36 @@ describe("readMessageFromStdin", () => {
     expect(calls.n).toBe(1)
   })
 })
+
+// `--command` — тоже источник задания.
+//
+// При `run --command plan` без позиционного сообщения аргумент пуст, и правило «stdin
+// единственный источник» ошибочно разрешало читать его до EOF: праздная труба вешала
+// прогон ровно так же, как до починки. Предикат об этом входе не знал, а тест проверял
+// только чистый предикат — то есть был зелёным на неполном контракте.
+describe("readMessageFromStdin: --command", () => {
+  it("с --command stdin не читается даже без позиционного сообщения", async () => {
+    const calls = { n: 0 }
+    const out = await readMessageFromStdin({
+      argument: "",
+      hasCommand: true,
+      isTTY: false,
+      read: async () => {
+        calls.n++
+        return "piped"
+      },
+    })
+    expect(out).toBeUndefined()
+    expect(calls.n, "read вызван — значит праздная труба снова повесит прогон").toBe(0)
+  })
+
+  it("НЕГАТИВНЫЙ: без --command и без аргумента stdin по-прежнему читается", async () => {
+    const out = await readMessageFromStdin({
+      argument: "",
+      hasCommand: false,
+      isTTY: false,
+      read: async () => "piped",
+    })
+    expect(out).toBe("piped")
+  })
+})

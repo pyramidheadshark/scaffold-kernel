@@ -26,12 +26,20 @@
 export async function readMessageFromStdin(input: {
   /** The message supplied as a CLI argument, if any. */
   argument: string | undefined
+  /**
+   * Whether `--command` was given. It is a source of the task too: with
+   * `run --command plan` and no positional message the argument is empty, and the rule
+   * "stdin is the only source" wrongly allowed draining it to EOF — an idle pipe hung the
+   * run exactly as before the fix.
+   */
+  hasCommand?: boolean
   /** `process.stdin.isTTY` — a TTY is a human, never a pipe to drain. */
   isTTY: boolean
   /** Reads stdin to EOF. Not called unless the answer is genuinely needed. */
   read: () => Promise<string>
 }): Promise<string | undefined> {
   if (input.isTTY) return undefined
+  if (input.hasCommand) return undefined
   if ((input.argument ?? "").trim().length > 0) return undefined
   return await input.read()
 }
