@@ -39,6 +39,33 @@ export const PlanExitTool = Tool.define(
 
           const info = yield* session.get(ctx.sessionID)
           const plan = path.relative(Instance.worktree, Session.plan(info))
+
+          // never-ask: та же ветка, что в tool/question.ts.
+          //
+          // Scaffold, 2026-09-06 — исправление собственной наполовину сделанной работы.
+          // Предыдущий патч (scaffold-v0.1.32) закрыл вечный висяк headless-прогона на
+          // `question`, и его описание называло ДВА тула — `question` и `plan_exit`, —
+          // потому что оба зовут `question.ask(...)` напрямую, минуя permission-систему.
+          // Лечение при этом поставили только в один. `Question.ask` ждёт голый
+          // `Deferred.await` без таймаута, подписки на `question.asked` в `run` нет —
+          // значит `plan_exit` в headless как вешал прогон навсегда, так и вешает.
+          //
+          // Хуже, чем просто недоделка: единственная защита, на которую ссылался
+          // downstream (`pi-scaffold/src/scaffold/cli.ts`, шаблон команды `/plan`:
+          // «у команды run в ядре hardcoded plan_exit: deny»), тем же патчем ОБЪЯВЛЕНА
+          // инертной. То есть дефект остался, а документация назвала его закрытым.
+          if (yield* question.neverAsk()) {
+            return {
+              title: "Plan complete (never-ask)",
+              output:
+                `[Never-Ask] No user is available to confirm the switch (never-ask mode is on). The plan at ${plan} is complete. ` +
+                "Plan mode STAYS active — do not start implementing, and do not call plan_exit again. " +
+                "Summarise the plan in your response text and end your turn: the operator will review it and switch agents if they want the work done. " +
+                "IMPORTANT: state the plan's conclusion in the response text, not only in thinking — that text is the whole deliverable of an unattended plan run.",
+              metadata: { switched: false, feedback: "" },
+            }
+          }
+
           const answers = yield* question.ask({
             sessionID: ctx.sessionID,
             questions: [

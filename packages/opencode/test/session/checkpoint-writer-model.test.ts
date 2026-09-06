@@ -87,3 +87,40 @@ describe("resolveWriterModel", () => {
     expect(out.model).toEqual(parent)
   })
 })
+
+describe("resolveWriterModel — форма ссылки на группу", () => {
+  // `agent/agent.ts` кладёт значение БЕЗ слеша в `modelRef`, а не в `model`. Это законный
+  // конфиг ядра, но резолвер писателя его применить не может. Молчание тут воспроизвело
+  // бы ровно тот дефект, который резолвер и заводился чинить: настройка принята, места
+  // стоит, не меняет ничего.
+  it("ссылка на группу сообщается отдельно, а не сливается с «ничего не задано»", () => {
+    const out = resolveWriterModel({
+      agents: { "checkpoint-writer": { model: "lite" } },
+      parentModel: parent,
+      forkMode: false,
+    })
+    expect(out.model).toEqual(parent)
+    expect(out.unsupportedGroupRef).toBe("lite")
+  })
+
+  it("НЕГАТИВНЫЙ: когда ничего не задано, о группе не сообщается", () => {
+    expect(resolveWriterModel({ agents: {}, parentModel: parent, forkMode: false }).unsupportedGroupRef).toBeUndefined()
+  })
+
+  it("НЕГАТИВНЫЙ: валидная форма provider/model группой не считается", () => {
+    const out = resolveWriterModel({
+      agents: { "checkpoint-writer": { model: "openai/gpt-5.6-luna" } },
+      parentModel: parent,
+      forkMode: false,
+    })
+    expect(out.unsupportedGroupRef).toBeUndefined()
+    expect(out.model).toEqual(lite)
+  })
+
+  it("пустая строка — не группа, а просто отсутствие настройки", () => {
+    expect(
+      resolveWriterModel({ agents: { "checkpoint-writer": { model: "  " } }, parentModel: parent, forkMode: false })
+        .unsupportedGroupRef,
+    ).toBeUndefined()
+  })
+})
