@@ -1,3 +1,4 @@
+import { isBoundedComputationAgent } from "@/agent/bounded-computation"
 import path from "path"
 import os from "os"
 import z from "zod"
@@ -3929,12 +3930,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           // Resolve the agent for this iteration once. Both the management
           // hooks below (fireCheckpoints, overflow handler) and the existing
           // agent-not-found check later in the iteration reuse this binding.
-          // Bounded computation agents (native + hidden — currently title,
-          // summary, checkpoint-writer) are exempt from context management;
-          // see docs/superpowers/specs/2026-04-28-bounded-computation-agents-design.md
+          // Bounded computation agents are exempt from context management; the
+          // membership is an EXPLICIT list, not `native && hidden` inference —
+          // `hidden` also means "keep out of the spawn enum / agent list", and
+          // conflating the two silently disarmed checkpoints and overflow for any
+          // native agent a user hid for visibility reasons.
+          // see agent/bounded-computation.ts and
+          // docs/superpowers/specs/2026-04-28-bounded-computation-agents-design.md
           const agent = yield* agents.get(lastUser.agent)
-          const isBoundedComputation =
-            agent?.native === true && agent?.hidden === true
+          const isBoundedComputation = isBoundedComputationAgent(agent)
 
           // Fire background checkpoint writers for any newly-crossed thresholds
           // based on the latest completed assistant message's tokens. These
