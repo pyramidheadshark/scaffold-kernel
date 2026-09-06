@@ -46,6 +46,18 @@ export function parseWriterModel(raw: unknown): WriterModelRef | undefined {
   return { providerID, modelID }
 }
 
+/**
+ * Задана ли модель в форме ССЫЛКИ НА ГРУППУ (`"lite"`), а не `"provider/model"`.
+ *
+ * Это законный конфиг ядра: `agent/agent.ts` кладёт значение без слеша в `modelRef`,
+ * а не в `model`. Резолвер писателя такую форму применить не может — но и молчать о ней
+ * нельзя: настройка была бы принята, стоила бы места в конфиге и не меняла бы ничего,
+ * то есть ровно тот дефект, который этот модуль и заводился чинить.
+ */
+export function isModelGroupRef(raw: unknown): raw is string {
+  return typeof raw === "string" && raw.trim().length > 0 && !raw.includes("/")
+}
+
 /** The `agent` map of a resolved config, narrowed to the one field we read. */
 type AgentConfigMap = Record<string, { model?: unknown } | undefined> | undefined
 
@@ -59,9 +71,18 @@ export function resolveWriterModel(input: { agents: AgentConfigMap; parentModel:
   model: WriterModelRef
   configured?: WriterModelRef
   ignoredBecauseFork: boolean
+  /** Задана ссылка на группу — применить нельзя, но сказать об этом обязаны. */
+  unsupportedGroupRef?: string
 } {
-  const configured = parseWriterModel(input.agents?.["checkpoint-writer"]?.model)
-  if (!configured) return { model: input.parentModel, ignoredBecauseFork: false }
+  const raw = input.agents?.["checkpoint-writer"]?.model
+  const configured = parseWriterModel(raw)
+  if (!configured) {
+    return {
+      model: input.parentModel,
+      ignoredBecauseFork: false,
+      ...(isModelGroupRef(raw) ? { unsupportedGroupRef: raw } : {}),
+    }
+  }
   if (input.forkMode) return { model: input.parentModel, configured, ignoredBecauseFork: true }
   return { model: configured, configured, ignoredBecauseFork: false }
 }

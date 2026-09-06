@@ -816,6 +816,17 @@ export const layer: Layer.Layer<
         forkMode,
       })
       const writerModel = writerModelChoice.model
+      if (writerModelChoice.unsupportedGroupRef) {
+        // Форма-ссылка на группу (`"lite"`) законна для ядра, но резолвер писателя её
+        // применить не может. Молчание здесь воспроизвело бы ровно тот дефект, который
+        // резолвер заводился чинить: настройка принята, места стоит, не меняет ничего.
+        log.info("checkpoint-writer model is a model-group reference and cannot be applied here", {
+          sessionID: input.sessionID,
+          configured: writerModelChoice.unsupportedGroupRef,
+          parent: `${input.model.providerID}/${input.model.modelID}`,
+          why: 'agent["checkpoint-writer"].model must be "provider/model" to take effect for the writer; a bare group name resolves to modelRef, which this call site does not read.',
+        })
+      }
       if (writerModelChoice.ignoredBecauseFork) {
         log.info("checkpoint-writer model configured but ignored under checkpoint.fork:true", {
           sessionID: input.sessionID,
