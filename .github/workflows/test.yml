@@ -43,6 +43,21 @@ jobs:
       # process-wide, so sharing a bun test process with it always breaks
       # these tests. Same isolation pattern as runtime-worktree.
       #
+      # prompt-effect.test.ts and fork-prefix-invariant.test.ts excluded 2026-09-06:
+      # `test` on main was red in 6 runs out of 11, always the same two tests
+      # (`failed subtask preserves metadata`, `fork prefix invariant`), and never
+      # reproducibly — neither in isolation locally, nor running the whole 1/4 shard
+      # locally. Both are Effect-runtime tests that call `Instance.disposeAll()` in
+      # afterEach, a PROCESS-GLOBAL teardown, and both fail with "All fibers
+      # interrupted without error" — the signature of another file's runtime being
+      # torn down underneath them. They hash into the same shard.
+      #
+      # This is a MEASUREMENT, not a claimed fix: isolating them separates
+      # process pollution from load-dependent timing. If they still go red alone,
+      # the cause is not shard neighbours and the next step is elsewhere. Releases
+      # were being cut from a red main, so leaving the question open was worse than
+      # either answer.
+      #
       # Sharding is path-hash, NOT list position: `NR % n` on the sorted file
       # list reassigns every later file when one is added/removed, which
       # reshuffles process-wide mocks and breaks order-sensitive tests
@@ -70,7 +85,9 @@ jobs:
             fi
           done < <(find test -name '*.test.ts' \
             ! -name 'runtime-worktree.test.ts' \
-            ! -name 'stdio-exit-observe.test.ts' | sort))
+            ! -name 'stdio-exit-observe.test.ts' \
+            ! -name 'prompt-effect.test.ts' \
+            ! -name 'fork-prefix-invariant.test.ts' | sort))
           # Empty shard: `bun test` with no file args discovers everything,
           # including the excluded isolation files. Skip instead of running
           # the whole suite in this leg.
@@ -104,3 +121,18 @@ jobs:
         timeout-minutes: 2
         working-directory: packages/opencode
         run: bun test test/mcp/stdio-exit-observe.test.ts --timeout 120000
+
+      # Effect-runtime session tests in their own process (shard 4/4 only).
+      # Each gets its OWN `bun test` invocation: putting them in one process
+      # together would reproduce exactly the sharing this step exists to rule out.
+      - name: Run prompt-effect test (isolated)
+        if: matrix.shard == '4/4'
+        timeout-minutes: 6
+        working-directory: packages/opencode
+        run: bun test test/session/prompt-effect.test.ts --timeout 120000
+
+      - name: Run fork-prefix-invariant test (isolated)
+        if: matrix.shard == '4/4'
+        timeout-minutes: 3
+        working-directory: packages/opencode
+        run: bun test test/session/fork-prefix-invariant.test.ts --timeout 120000
