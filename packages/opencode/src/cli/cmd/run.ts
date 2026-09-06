@@ -57,7 +57,12 @@ async function enableDangerousDeleteApproval(
     // оба шлют disable. Та же форма, что у restore never-ask.
     if (state.restored) return
     state.restored = true
-    await sdk.permission.setAutoApproveDelete({ enabled: false }, { throwOnError: true })
+    // ⚠ `.catch`, а не `throwOnError` без ловли. Эти два восстановления зовутся подряд из
+    // одного `finally`, и delete-restore идёт ПЕРВЫМ: его исключение вылетало из `finally`
+    // и (а) валило успешный прогон, (б) съедало восстановление never-ask, которое стоит
+    // следом. У never-ask ловля есть, у этого не было — асимметрия, которую видно только
+    // при чтении обоих мест сразу.
+    await sdk.permission.setAutoApproveDelete({ enabled: false }, { throwOnError: true }).catch(() => {})
   }
 }
 
@@ -105,13 +110,30 @@ async function stdinHasData(): Promise<boolean> {
     if (st.isFile() && st.size > 0) return true
     if (!st.isFIFO() && !st.isSocket()) return false
     // Труба: спрашиваем ОС, не читая. Пустая незакрытая труба даёт 0.
-    const { execFileSync } = await import("node:child_process")
-    const out = execFileSync("sh", ["-c", "read -t 0 _ 0<&0 && echo yes || echo no"], {
-      stdio: ["inherit", "pipe", "ignore"],
-      encoding: "utf8",
-    })
-    return out.trim() === "yes"
-  } catch {
+    // ⚠ Здесь стоял `sh -c 'read -t 0'`, и он не работал НИ НА ОДНОЙ из двух сторон.
+    //
+    // `-t` — расширение bash/ksh/zsh. На Debian и Ubuntu `/bin/sh` это `dash`, где такого
+    // ключа нет: `read: Illegal option -t` → ветка `|| echo no` → проба говорит «данных
+    // нет» даже на трубе С ДАННЫМИ. То есть на самом распространённом образе уведомление
+    // не печаталось никогда. А там, где `/bin/sh` это bash, `read -t 0` на ПУСТОЙ ЗАКРЫТОЙ
+    // трубе возвращает успех (EOF читается как готовность) — и проба кричала ложно.
+    //
+    // Оба исхода противоположны заявленному, и оба нашлись замером в контейнере, а не
+    // чтением. Внешний шелл убран: спрашиваем ядро напрямую неблокирующим чтением.
+    const fd = fs.openSync("/dev/stdin", fs.constants.O_RDONLY | fs.constants.O_NONBLOCK)
+    try {
+      const buf = Buffer.alloc(1)
+      // EAGAIN — труба открыта и пуста: данных сейчас нет. 0 — EOF, писателя нет.
+      // Больше нуля — данные есть, и мы их НЕ потребляем: читаем с позиции 0 файла,
+      // а для трубы pread недоступен, поэтому берём только сам факт готовности.
+      const n = fs.readSync(fd, buf, 0, 1, null)
+      return n > 0
+    } finally {
+      fs.closeSync(fd)
+    }
+  } catch (err) {
+    // EAGAIN/EWOULDBLOCK — «пусто прямо сейчас», это ответ, а не неудача пробы.
+    if ((err as NodeJS.ErrnoException)?.code === "EAGAIN") return false
     return false // не смогли выяснить — молчим, а не кричим ложно
   }
 }
@@ -128,7 +150,18 @@ export async function enableNeverAsk(sdk: Pick<OpencodeClient, "question">, atta
   // флаг поднятым бессрочно.
   //
   // Своя, локально поднятая петля таких соседей не имеет — там включать безопасно.
-  // Довод «под --attach есть кому спросить» тут не догадка, а определение режима.
+  //
+  // ⚠ Но «под --attach есть кому спросить» — НЕ определение режима, и первая редакция
+  // этого комментария была неправа. `mimo serve` штатно поднимается без TUI, и именно
+  // туда ходит `--attach` из CI: спросить там некого, а `Question.ask` ждёт голый
+  // `Deferred.await` без предельного времени. То есть висяк, объявленный закрытым в
+  // v0.1.32, оставался открытым в другом режиме — закрыли в одном месте и внесли в
+  // другое, назвав это определением.
+  //
+  // Здесь мы по-прежнему НЕ трогаем инстанс-широкий флаг (сосед не должен пострадать), а
+  // защиту даёт сессионная подписка в петле событий ниже: `question.asked` с чужим
+  // `sessionID` пропускается, свой — отклоняется. Тот же приём, что уже применён к
+  // `permission.asked` в этом файле.
   if (attached) return async () => {}
 
   const previous = await sdk.question
@@ -468,7 +501,10 @@ export const RunCommand = cmd({
       read: () => Bun.stdin.text(),
     })
     if (piped !== undefined) message = piped
-    else if (!process.stdin.isTTY && message.trim().length > 0 && (await stdinHasData())) {
+    // ⚠ Условие `message.trim().length > 0` пропускало случай `run --command X` с трубой:
+    // позиционного сообщения там нет, `message` пуст, и вход терялся МОЛЧА — при том что
+    // именно ради «молчаливая потеря хуже заметного висяка» это уведомление и заведено.
+    else if (!process.stdin.isTTY && (message.trim().length > 0 || Boolean(args.command)) && (await stdinHasData())) {
       // Собственный критерий этого же решения — «молчаливая потеря хуже заметного
       // висяка» — обязывает сказать вслух. Правило (stdin читается только когда он
       // единственный источник сообщения) отбрасывает вход, если сообщение уже передано
@@ -680,6 +716,26 @@ export const RunCommand = cmd({
               error = error ? error + EOL + err : err
               if (emit("error", { error: props.error })) continue
               UI.error(err)
+            }
+
+            // Вопрос модели в headless-прогоне некому ответить. Под своей петлёй это
+            // закрывает инстанс-широкий never-ask (`enableNeverAsk`), но под `--attach`
+            // трогать чужой инстанс нельзя — там защита сессионная и живёт здесь.
+            //
+            // Отклонение, а не молчание: `Question.ask` ждёт без предельного времени, и
+            // прогон вис бы навсегда. Модель получает определённый исход («вопрос
+            // отклонён») и продолжает, а не стоит до убийства снаружи.
+            if (event.type === "question.asked") {
+              const question = event.properties
+              if (question.sessionID !== sessionID) continue
+              UI.println(
+                UI.Style.TEXT_WARNING_BOLD + "!",
+                UI.Style.TEXT_NORMAL +
+                  `question asked in a headless run (${question.questions.length}); auto-rejecting — ` +
+                  "there is nobody to answer under --attach",
+              )
+              await sdk.question.reject({ requestID: question.id }).catch(() => {})
+              continue
             }
 
             if (event.type === "permission.asked") {

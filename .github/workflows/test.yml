@@ -109,7 +109,7 @@ jobs:
 
       # Run deadline worktree test in isolation (shard 4/4 only).
       - name: Run deadline worktree test (isolated)
-        if: matrix.shard == '4/4'
+        if: always() && matrix.shard == '4/4'
         timeout-minutes: 3
         working-directory: packages/opencode
         run: bun test test/workflow/runtime-worktree.test.ts -t 'deadline-fired' --timeout 120000
@@ -117,7 +117,7 @@ jobs:
       # Run stdio-exit-observe in isolation (shard 4/4 only): needs the real
       # ObservingStdioTransport, which lifecycle.test.ts mock.module's away.
       - name: Run stdio-exit-observe test (isolated)
-        if: matrix.shard == '4/4'
+        if: always() && matrix.shard == '4/4'
         timeout-minutes: 2
         working-directory: packages/opencode
         run: bun test test/mcp/stdio-exit-observe.test.ts --timeout 120000
@@ -125,14 +125,18 @@ jobs:
       # Effect-runtime session tests in their own process (shard 4/4 only).
       # Each gets its OWN `bun test` invocation: putting them in one process
       # together would reproduce exactly the sharing this step exists to rule out.
+      # ⚠ `always()` обязателен, и это не перестраховка. Без него шаг неявно под
+      # `success()`: он не выполняется ровно тогда, когда шард КРАСНЫЙ, — то есть в
+      # единственном случае, ради измерения которого изоляция и заведена. Прибор был бы
+      # выключен в своём окне.
       - name: Run prompt-effect test (isolated)
-        if: matrix.shard == '4/4'
+        if: always() && matrix.shard == '4/4'
         timeout-minutes: 6
         working-directory: packages/opencode
         run: bun test test/session/prompt-effect.test.ts --timeout 120000
 
       - name: Run fork-prefix-invariant test (isolated)
-        if: matrix.shard == '4/4'
+        if: always() && matrix.shard == '4/4'
         timeout-minutes: 3
         working-directory: packages/opencode
         run: bun test test/session/fork-prefix-invariant.test.ts --timeout 120000
