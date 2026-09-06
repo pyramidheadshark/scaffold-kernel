@@ -3931,12 +3931,14 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           // hooks below (fireCheckpoints, overflow handler) and the existing
           // agent-not-found check later in the iteration reuse this binding.
           // Bounded computation agents are exempt from context management; the
-          // membership is an EXPLICIT list, not `native && hidden` inference —
-          // `hidden` also means "keep out of the spawn enum / agent list", and
-          // conflating the two silently disarmed checkpoints and overflow for any
-          // native agent a user hid for visibility reasons.
-          // see agent/bounded-computation.ts and
-          // docs/superpowers/specs/2026-04-28-bounded-computation-agents-design.md
+          // membership is an EXPLICIT set derived from SYSTEM_SPAWNED_AGENT_TYPES,
+          // not `native && hidden` inference — `hidden` also means "keep out of the
+          // spawn enum / agent list", and conflating the two silently disarmed
+          // checkpoints and overflow for any native agent a user hid for
+          // visibility reasons. See agent/bounded-computation.ts for both mistakes
+          // this predicate has already made. (The design note the previous comment
+          // cited, docs/superpowers/specs/…, is not in this repository — the code
+          // and that file are the only sources here.)
           const agent = yield* agents.get(lastUser.agent)
           const isBoundedComputation = isBoundedComputationAgent(agent)
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { BOUNDED_COMPUTATION_AGENTS, isBoundedComputationAgent } from "@/agent/bounded-computation"
+import { SYSTEM_SPAWNED_AGENT_TYPES } from "@/agent/config"
 
 /**
  * The predicate used to be `native === true && hidden === true`. That inference
@@ -9,11 +10,31 @@ import { BOUNDED_COMPUTATION_AGENTS, isBoundedComputationAgent } from "@/agent/b
  * dies against the window instead of compacting, silently.
  */
 describe("isBoundedComputationAgent", () => {
-  test("the three named kernel agents qualify", () => {
-    for (const name of ["title", "summary", "checkpoint-writer"]) {
+  test("every runtime-spawned agent qualifies — the invariant they must not self-trigger", () => {
+    // prune.ts and actor/registry.ts both state it: the writers must not spawn
+    // themselves. Dropping any of these three from the set breaks that, and the
+    // first version of this file dropped two.
+    for (const name of SYSTEM_SPAWNED_AGENT_TYPES) {
       expect(isBoundedComputationAgent({ name, native: true })).toBe(true)
     }
-    expect(BOUNDED_COMPUTATION_AGENTS.size).toBe(3)
+  })
+
+  test("the single-turn helpers qualify", () => {
+    for (const name of ["title", "summary"]) {
+      expect(isBoundedComputationAgent({ name, native: true })).toBe(true)
+    }
+  })
+
+  // Pins the population, not a number: a bare `.size` assertion goes red on the
+  // correct fix and green on a wrong one of the same length.
+  test("the set is exactly the runtime-spawned agents plus the two helpers", () => {
+    expect([...BOUNDED_COMPUTATION_AGENTS].sort()).toEqual(
+      [...SYSTEM_SPAWNED_AGENT_TYPES, "title", "summary"].sort(),
+    )
+  })
+
+  test("compaction is absent on purpose — it never reaches this predicate", () => {
+    expect(BOUNDED_COMPUTATION_AGENTS.has("compaction")).toBe(false)
   })
 
   // The regression this file exists for.
