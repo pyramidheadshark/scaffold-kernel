@@ -39,17 +39,25 @@ type ToolProps<T> = {
 async function enableDangerousDeleteApproval(
   sdk: Pick<OpencodeClient, "permission">,
   enabled: boolean,
+  attached: boolean,
 ) {
   if (!enabled) return async () => {}
+  // Тот же довод, что у never-ask, и здесь он весомее: автоодобрение УДАЛЕНИЙ тоже
+  // инстанс-широкое, а `--attach` по определению чужой сервер, на котором может сидеть
+  // человек. Довод применили к менее опасному переключателю и не применили к более
+  // опасному — исправляется здесь.
+  if (attached) return async () => {}
   const previous = (await sdk.permission.autoApproveDelete(undefined, { throwOnError: true })).data === true
   if (previous) return async () => {}
 
   await sdk.permission.setAutoApproveDelete({ enabled: true }, { throwOnError: true })
   const state = { restored: false }
   return async () => {
+    // Флаг ДО await, а не после: иначе два конкурентных вызова оба проходят проверку и
+    // оба шлют disable. Та же форма, что у restore never-ask.
     if (state.restored) return
-    await sdk.permission.setAutoApproveDelete({ enabled: false }, { throwOnError: true })
     state.restored = true
+    await sdk.permission.setAutoApproveDelete({ enabled: false }, { throwOnError: true })
   }
 }
 
@@ -78,6 +86,36 @@ async function enableDangerousDeleteApproval(
  * never-ask is instance-wide: under `--attach` this run shares a server with
  * whoever else is on it, so it must hand the state back exactly as found.
  */
+/**
+ * Есть ли что-то читаемое на stdin ПРЯМО СЕЙЧАС.
+ *
+ * Нужно только чтобы не врать в сообщении. Прежняя редакция печатала «stdin не прочитан»
+ * при ЛЮБОМ не-TTY stdin — то есть в CI, под `< /dev/null`, под nohup, на каждом
+ * headless-прогоне, где никаких данных не было и терять было нечего. Совет «уберите
+ * аргумент» там приводил бы к отказу «You must provide a message».
+ *
+ * Проба неблокирующая и однократная: держать её дольше значило бы воспроизвести тот самый
+ * висяк, от которого правило и защищает.
+ */
+async function stdinHasData(): Promise<boolean> {
+  try {
+    const fs = await import("node:fs")
+    const st = fs.fstatSync(0)
+    // Файл или устройство с ненулевым размером — данные точно есть.
+    if (st.isFile() && st.size > 0) return true
+    if (!st.isFIFO() && !st.isSocket()) return false
+    // Труба: спрашиваем ОС, не читая. Пустая незакрытая труба даёт 0.
+    const { execFileSync } = await import("node:child_process")
+    const out = execFileSync("sh", ["-c", "read -t 0 _ 0<&0 && echo yes || echo no"], {
+      stdio: ["inherit", "pipe", "ignore"],
+      encoding: "utf8",
+    })
+    return out.trim() === "yes"
+  } catch {
+    return false // не смогли выяснить — молчим, а не кричим ложно
+  }
+}
+
 export async function enableNeverAsk(sdk: Pick<OpencodeClient, "question">, attached: boolean) {
   // Под `--attach` не трогаем НИЧЕГО.
   //
@@ -422,18 +460,22 @@ export const RunCommand = cmd({
     // before a session existed: no output, no database row, no CPU.
     const piped = await readMessageFromStdin({
       argument: message,
+      // `--command` — тоже источник задания: при `run --command plan` без позиционного
+      // сообщения `message` пуст, и правило «stdin единственный источник» ошибочно
+      // разрешало читать его до EOF. Праздная труба вешала прогон ровно так же.
+      hasCommand: Boolean(args.command),
       isTTY: Boolean(process.stdin.isTTY),
       read: () => Bun.stdin.text(),
     })
     if (piped !== undefined) message = piped
-    else if (!process.stdin.isTTY && message.trim().length > 0) {
+    else if (!process.stdin.isTTY && message.trim().length > 0 && (await stdinHasData())) {
       // Собственный критерий этого же решения — «молчаливая потеря хуже заметного
       // висяка» — обязывает сказать вслух. Правило (stdin читается только когда он
       // единственный источник сообщения) отбрасывает вход, если сообщение уже передано
       // аргументом; молча это тот же дефект, от которого правило и защищает.
       UI.println(
         UI.Style.TEXT_DIM +
-          "stdin не прочитан: сообщение передано аргументом. Уберите аргумент, чтобы взять текст из stdin." +
+          "stdin содержит данные, но не прочитан: задание передано аргументом или --command." +
           UI.Style.TEXT_NORMAL,
       )
     }
@@ -757,6 +799,7 @@ export const RunCommand = cmd({
       const restoreDeleteApproval = await enableDangerousDeleteApproval(
         sdk,
         args["dangerously-skip-permissions"],
+        Boolean(args.attach),
       )
       const restoreNeverAsk = await enableNeverAsk(sdk, Boolean(args.attach))
       const restoreRunOverrides = async () => {
@@ -764,14 +807,27 @@ export const RunCommand = cmd({
         await restoreNeverAsk()
       }
 
-      // Сигналы. Без этого падение или Ctrl+C между включением и `finally` оставляли
-      // изменённое состояние инстанса поднятым бессрочно — а восстановление живёт только
-      // в `finally` петли, до которого сигнал не доходит.
-      // `once`, а не `on`: обработчик снимает ровно то, что поставил, повторный вызов
-      // идемпотентен по конструкции restore, но плодить их на каждый сигнал незачем.
+      // Сигналы: восстановить состояние инстанса И ЗАВЕРШИТЬСЯ.
+      //
+      // ⚠ Первая редакция ставила обработчик без выхода — и тем ОТМЕНЯЛА дефолтное
+      // завершение процесса. Замер (bun 1.4.0, тот же рантайм; базлайн — живой бинарь
+      // 0.1.31): без обработчика SIGTERM и SIGHUP убивают процесс, с этим паттерном
+      // обе оставляют его ALIVE. То есть патч, чинивший потерю состояния, породил
+      // ядро, которое переусыновляется на systemd вместо смерти, а после SIGHUP живёт
+      // уже БЕЗ never-ask — и первый же `question` вешает его навсегда. Два патча
+      // одного релиза складывались в тот самый вечный висяк, который релиз закрывал.
+      //
+      // Дедлайн на restore обязателен: без него зависший HTTP-вызов к серверу держал бы
+      // процесс, который обязан умирать. Лучше выйти с невосстановленным флагом, чем не
+      // выйти вовсе — флаг чинится следующим прогоном, невыход не чинится ничем.
+      const RESTORE_DEADLINE_MS = 2_000
       for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         process.once(sig, () => {
-          void restoreRunOverrides()
+          const code = sig === "SIGINT" ? 130 : sig === "SIGHUP" ? 129 : 143
+          void Promise.race([
+            restoreRunOverrides(),
+            new Promise(resolve => setTimeout(resolve, RESTORE_DEADLINE_MS)),
+          ]).finally(() => process.exit(code))
         })
       }
 
