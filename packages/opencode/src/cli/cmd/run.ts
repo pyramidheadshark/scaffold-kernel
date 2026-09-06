@@ -78,7 +78,21 @@ async function enableDangerousDeleteApproval(
  * never-ask is instance-wide: under `--attach` this run shares a server with
  * whoever else is on it, so it must hand the state back exactly as found.
  */
-export async function enableNeverAsk(sdk: Pick<OpencodeClient, "question">) {
+export async function enableNeverAsk(sdk: Pick<OpencodeClient, "question">, attached: boolean) {
+  // Под `--attach` не трогаем НИЧЕГО.
+  //
+  // never-ask инстанс-широкий, а `--attach` по определению означает чужой сервер, на
+  // котором может сидеть живой TUI. Первая редакция включала его и там, полагая, что
+  // восстановление в конце всё чинит: не чинит. Пока идёт прогон, у человека question-тул
+  // перестаёт спрашивать и «решает сам»; два параллельных прогона гасят защиту друг другу
+  // (второй видит true, возвращает no-op restore, первый в конце выключает — второй
+  // доигрывает без защиты); а падение процесса между включением и `finally` оставляет
+  // флаг поднятым бессрочно.
+  //
+  // Своя, локально поднятая петля таких соседей не имеет — там включать безопасно.
+  // Довод «под --attach есть кому спросить» тут не догадка, а определение режима.
+  if (attached) return async () => {}
+
   const previous = await sdk.question
     .neverAsk(undefined, { throwOnError: true })
     .then((r) => r.data === true)
@@ -412,6 +426,17 @@ export const RunCommand = cmd({
       read: () => Bun.stdin.text(),
     })
     if (piped !== undefined) message = piped
+    else if (!process.stdin.isTTY && message.trim().length > 0) {
+      // Собственный критерий этого же решения — «молчаливая потеря хуже заметного
+      // висяка» — обязывает сказать вслух. Правило (stdin читается только когда он
+      // единственный источник сообщения) отбрасывает вход, если сообщение уже передано
+      // аргументом; молча это тот же дефект, от которого правило и защищает.
+      UI.println(
+        UI.Style.TEXT_DIM +
+          "stdin не прочитан: сообщение передано аргументом. Уберите аргумент, чтобы взять текст из stdin." +
+          UI.Style.TEXT_NORMAL,
+      )
+    }
 
     if (message.trim().length === 0 && !args.command) {
       UI.error("You must provide a message or a command")
@@ -733,10 +758,21 @@ export const RunCommand = cmd({
         sdk,
         args["dangerously-skip-permissions"],
       )
-      const restoreNeverAsk = await enableNeverAsk(sdk)
+      const restoreNeverAsk = await enableNeverAsk(sdk, Boolean(args.attach))
       const restoreRunOverrides = async () => {
         await restoreDeleteApproval()
         await restoreNeverAsk()
+      }
+
+      // Сигналы. Без этого падение или Ctrl+C между включением и `finally` оставляли
+      // изменённое состояние инстанса поднятым бессрочно — а восстановление живёт только
+      // в `finally` петли, до которого сигнал не доходит.
+      // `once`, а не `on`: обработчик снимает ровно то, что поставил, повторный вызов
+      // идемпотентен по конструкции restore, но плодить их на каждый сигнал незачем.
+      for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+        process.once(sig, () => {
+          void restoreRunOverrides()
+        })
       }
 
       loop(tracker, restoreRunOverrides).catch(async (e) => {
