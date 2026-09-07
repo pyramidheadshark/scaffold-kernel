@@ -797,7 +797,17 @@ export const layer: Layer.Layer<
         notesFile,
         rangeDesc,
         progressDiff,
-        gptToolset: usesGPTToolset(input.model.modelID, undefined, input.model.providerID),
+        // ⚠ Граница названа честно. Реестр решает состав инструментов ЧЕТЫРЬМЯ аргументами
+        // (`tool/registry.ts`: modelID, harness, apiModelID, family), а сюда доезжают только
+        // `providerID` и `modelID`. Прежняя редакция передавала `providerID` третьим
+        // вариадическим — там ждут идентификатор МОДЕЛИ, и `isGPTModel("openai")` ложно, то
+        // есть аргумент не работал ни в одну сторону и создавал видимость проверки. Убран.
+        //
+        // Что остаётся непокрытым: модель, у которой признак GPT несёт только `family`, и
+        // явный `harness: "codex"` на не-GPT слаге. Оба случая требуют прокидывания полей
+        // через `TryStartCheckpointWriterInput` — отдельная правка, не эта. Для нашего пула
+        // (`gpt-5.6-*`) признак несёт сам `modelID`, поэтому текущая форма верна.
+        gptToolset: usesGPTToolset(input.model.modelID),
       })
 
       // v6: spawn writer as subagent — shared sessionID, automatic

@@ -23,10 +23,15 @@ function fixture() {
   const data = mkdtempSync(path.join(BASE, "data-"))
   const worktree = mkdtempSync(path.join(BASE, "wt-"))
   mkdirSync(path.join(data, "memory", "sessions", "ses_x"), { recursive: true })
+  mkdirSync(path.join(data, "memory", "projects", "pid"), { recursive: true })
   writeFileSync(path.join(data, "memory", "sessions", "ses_x", "checkpoint.md"), "# checkpoint\n")
   writeFileSync(path.join(data, "auth.json"), '{"openai":{"refresh":"СЕКРЕТ"}}\n')
   writeFileSync(path.join(worktree, "src.ts"), "export const a = 1\n")
-  return { data, worktree, roots: readJailRoots(worktree, worktree, data, [os.tmpdir()]) }
+  return {
+    data,
+    worktree,
+    roots: readJailRoots(worktree, worktree, data, [os.tmpdir()], { sessionID: "ses_x", projectID: "pid" }),
+  }
 }
 
 describe("джейл гостевого скрипта: дерево памяти читается, соседи по <data> — нет", () => {
@@ -75,9 +80,35 @@ describe("джейл гостевого скрипта: дерево памят�
     expect(() => resolveJailed(writeRoots, p, "write")).toThrow(/limited to the OS temp dir/)
   })
 
-  test("состав корней: ровно четыре, и memory последним", () => {
-    const roots = readJailRoots("/wt", "/dir", "/data", ["/tmp1", "/tmp2"])
-    expect(roots).toEqual(["/wt", "/tmp1", "/tmp2", path.join("/data", "memory")])
+  test("состав корней: своя сессия и свой проект, а НЕ дерево памяти", () => {
+    const roots = readJailRoots("/wt", "/dir", "/data", ["/tmp1", "/tmp2"], {
+      sessionID: "ses_a",
+      projectID: "pid_a",
+    })
+    expect(roots).toEqual([
+      "/wt",
+      "/tmp1",
+      "/tmp2",
+      path.join("/data", "memory", "sessions", "ses_a"),
+      path.join("/data", "memory", "projects", "pid_a"),
+    ])
+    expect(roots).not.toContain(path.join("/data", "memory"))
+  })
+
+  test("НЕГАТИВНЫЙ: без scope доступа к памяти нет вовсе", () => {
+    // Отсутствие идентификаторов обязано означать «не давать», а не «дать всё».
+    expect(readJailRoots("/wt", "/dir", "/data", ["/tmp"])).toEqual(["/wt", "/tmp"])
+  })
+
+  test("НЕГАТИВНЫЙ: чужая сессия и чужой проект недостижимы", () => {
+    const { data } = fixture()
+    const roots = readJailRoots("/wt", "/dir", data, [], { sessionID: "ses_mine", projectID: "pid_mine" })
+    expect(() => resolveJailed(roots, path.join(data, "memory", "sessions", "ses_alien", "checkpoint.md"), "read")).toThrow(
+      /outside allowed roots/,
+    )
+    expect(() => resolveJailed(roots, path.join(data, "memory", "projects", "pid_alien", "MEMORY.md"), "read")).toThrow(
+      /outside allowed roots/,
+    )
   })
 
   test("worktree === \"/\" подменяется каталогом проекта (иначе джейл — весь диск)", () => {

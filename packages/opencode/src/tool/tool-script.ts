@@ -6,6 +6,7 @@ import ts from "typescript"
 import { Effect } from "effect"
 import type { Tool as AiTool } from "ai"
 import { EffectBridge, InstanceState } from "@/effect"
+import { Instance } from "@/project/instance"
 import { Global } from "@/global"
 import { Log, Filesystem, ToolCompat } from "@/util"
 import { Agent } from "@/agent/agent"
@@ -364,9 +365,29 @@ function realpathBestEffort(p: string): string {
 /**
  * Roots a guest script may READ from. Writes use `tmpRoots` alone — see the `files.write`
  * call site.
+ *
+ * The agent memory grant is deliberately TWO narrow directories, not the memory tree:
+ *   - `<data>/memory/sessions/<this session>` — the checkpoint and notes this session owns;
+ *   - `<data>/memory/projects/<this project>` — the durable memory of the repo it runs in.
+ *
+ * Granting `<data>/memory` wholesale would have let a guest script in one repository read
+ * every other project's MEMORY.md and every other session's checkpoint on the machine. The
+ * first cut of this change did exactly that, and it contradicted its own stated scope
+ * ("narrowly, not globally"). Neither id is guessable from inside the script, so the grant
+ * cannot be widened by the guest.
  */
-export function readJailRoots(worktree: string, directory: string, dataPath: string, tmpRoots: string[]): string[] {
-  return [worktree === "/" ? directory : worktree, ...tmpRoots, path.join(dataPath, "memory")]
+export function readJailRoots(
+  worktree: string,
+  directory: string,
+  dataPath: string,
+  tmpRoots: string[],
+  memoryScope?: { sessionID?: string; projectID?: string },
+): string[] {
+  const roots = [worktree === "/" ? directory : worktree, ...tmpRoots]
+  const memory = path.join(dataPath, "memory")
+  if (memoryScope?.sessionID) roots.push(path.join(memory, "sessions", memoryScope.sessionID))
+  if (memoryScope?.projectID) roots.push(path.join(memory, "projects", memoryScope.projectID))
+  return roots
 }
 
 /** Exported for tests: the jail is the only thing standing between a guest script and
@@ -671,11 +692,22 @@ export const ToolScriptTool = Tool.define(
           // invented apply_patch context lines instead — 23 of its 79 exec failures were
           // literally `path outside allowed roots` on `<data>/memory/sessions/<sid>/checkpoint.md`.
           //
-          // Reads only, and deliberately not `<data>` itself: `auth.json` and the session
-          // database live one level up and must stay unreachable from guest scripts. Writes keep
-          // using `tmpRoots` (see the `files.write` call site) — project text changes go through
+          // Reads only, and narrowed to THIS session's directory and THIS project's memory —
+          // not the memory tree. `auth.json` and the session database live above it and stay
+          // unreachable; another repository's MEMORY.md stays unreachable too. Writes keep using
+          // `tmpRoots` (see the `files.write` call site) — project text changes go through
           // apply_patch, which is permission-aware and reviewable.
-          const jailRoots = readJailRoots(ins.worktree, ins.directory, Global.Path.data, tmpRoots)
+          const memoryProjectID = (() => {
+            try {
+              return Instance.current?.project?.id as string | undefined
+            } catch {
+              return undefined
+            }
+          })()
+          const jailRoots = readJailRoots(ins.worktree, ins.directory, Global.Path.data, tmpRoots, {
+            sessionID: ctx.sessionID,
+            projectID: memoryProjectID,
+          })
 
           // Snapshot the Effect context BEFORE crossing into Promise-land: the
           // quickjs hook boundary loses Instance/Workspace context otherwise.

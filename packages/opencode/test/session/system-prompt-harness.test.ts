@@ -14,12 +14,12 @@ import { SystemPrompt } from "../../src/session/system"
 const GPT_PROMPT_MARKER = "You are Codex, an agent based on GPT-5."
 const ROLE_PROMPT = "Ты — Инженер-исполнитель. Пиши тест до кода."
 
-function model(id: string, apiID = id) {
-  return { id, api: { id: apiID } } as any
+function model(id: string, apiID = id, family?: string) {
+  return { id, api: { id: apiID }, family } as any
 }
 
-function withPrompt(prompt?: string) {
-  return { name: "build", prompt } as any
+function withPrompt(prompt?: string, toolAllowlist?: string[]) {
+  return { name: "build", prompt, toolAllowlist } as any
 }
 
 describe("SystemPrompt.agent — харнесс-руководство не вытесняется промптом роли", () => {
@@ -46,6 +46,27 @@ describe("SystemPrompt.agent — харнесс-руководство не вы
     const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT), model("some-model"), "codex")
     expect(out.length).toBe(2)
     expect(out[0]).toContain(GPT_PROMPT_MARKER)
+  })
+
+  test("признак GPT только в family — харнесс всё равно доезжает", () => {
+    // Реестр инструментов решает по четырём аргументам, включая family. Трёхаргументная форма
+    // теряла его, и для такой модели набор был GPT, а руководство к нему — нет.
+    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT), model("deployment-x", "deployment-x", "gpt-5"))
+    expect(out.length).toBe(2)
+    expect(out[0]).toContain(GPT_PROMPT_MARKER)
+  })
+
+  test("НЕГАТИВНЫЙ: агент БЕЗ инструментов харнесс не получает", () => {
+    // `title`, `summary`, `compaction` объявлены с toolAllowlist: [] — 26 КБ описания
+    // `tools.<id>()` для них инструкция к тому, чего нет. Рост был бы 13-42×, причём
+    // генерация заголовка идёт на каждую сессию и как эфемерная не покрыта префикс-кэшем.
+    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT, []), model("gpt-5.6-terra"))
+    expect(out).toEqual([ROLE_PROMPT])
+  })
+
+  test("агент с непустым списком инструментов харнесс получает", () => {
+    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT, ["apply_patch", "task"]), model("gpt-5.6-terra"))
+    expect(out.length).toBe(2)
   })
 
   test("НЕГАТИВНЫЙ: другие семейства сохраняют поведение апстрима — только промпт роли", () => {
