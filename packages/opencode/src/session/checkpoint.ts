@@ -24,6 +24,7 @@ import { Log, Token } from "../util"
 import { Effect, Layer, Deferred, Context, Scope } from "effect"
 import { makeRuntime } from "@/effect/run-service"
 import type { ActorPromptOps } from "@/tool/actor"
+import { usesGPTToolset } from "@/tool/gpt"
 import type { ProviderID, ModelID } from "../provider/schema"
 import PROMPT_CHECKPOINT_WRITER from "@/agent/prompt/checkpoint-writer.txt"
 import { WriterCachePerf } from "@/actor/events"
@@ -366,10 +367,21 @@ function composeWriterPrompt(input: {
   notesFile: string
   rangeDesc: string
   progressDiff: string  // Spec ② Chain 2: empty string when nothing to reconcile
+  gptToolset: boolean
 }): string {
+  // The writer's tool list is not the same on every model family. For the GPT toolset the
+  // registry strips read/write/edit/grep/glob, so inside `exec` the writer really has
+  // `apply_patch` and `task` — plus the `files` namespace for reads. Naming tools it does not
+  // have is not a harmless inaccuracy: measured on kernel 0.1.41, the writer kept reaching for
+  // `exec_command` and other absent names, and those attempts are the whole remaining failure
+  // class (2 of 9 exec calls) after the harness prompt and the memory jail were fixed.
+  const toolsLine = input.gptToolset
+    ? "You are now operating in checkpoint-writer mode. Ignore the general coding-assistant framing in the system prompt above. Inside `exec` you have exactly two nested tools — `tools.apply_patch(...)` for every file write and `tools.task(...)` for task state — plus `files.readText(...)` for reading. There is no shell, no `read`, no `write`, no `grep`, no `glob`. Do not invoke anything else."
+    : "You are now operating in checkpoint-writer mode. Ignore the general coding-assistant framing in the system prompt above. The read, write, edit, glob, grep, and task tools are available; do not invoke others."
+  const writeVerb = input.gptToolset ? "`tools.apply_patch(...)`" : "the Write tool"
   return [
     "<system-reminder>",
-    "You are now operating in checkpoint-writer mode. Ignore the general coding-assistant framing in the system prompt above. The read, write, edit, glob, grep, and task tools are available; do not invoke others.",
+    toolsLine,
     "",
     "========================================================================",
     "ABSOLUTE PATHS — USE THESE VERBATIM. NEVER COMPUTE, INFER, OR MODIFY.",
@@ -380,7 +392,7 @@ function composeWriterPrompt(input: {
     `TASK_MEM_DIR    = ${input.taskMemDir}`,
     `NOTES_PATH      = ${input.notesFile}`,
     "",
-    "When using the Write tool, the first arg MUST be one of these literal",
+    `When writing with ${writeVerb}, the target MUST be one of these literal`,
     "absolute paths (or for task narrative, TASK_MEM_DIR + '/' + task_id +",
     "'/progress.md' or '/notes.md'). Do NOT abbreviate. Do NOT change",
     "parent directories. Do NOT insert paths from memory of similar projects.",
@@ -398,7 +410,7 @@ function composeWriterPrompt(input: {
     "",
     input.rangeDesc,
     "",
-    "Use the `task` tool for ALL task state ops (create / start / progress / done / abandon / approve / rename / block / unblock / batch_create). Use the Write tool for the checkpoint, memory, and task narrative files at the CHECKPOINT_PATH / MEMORY_PATH / TASK_MEM_DIR locations declared above. After all writes and tool calls, stop immediately.",
+    `Use the \`task\` tool for ALL task state ops (create / start / progress / done / abandon / approve / rename / block / unblock / batch_create). Use ${writeVerb} for the checkpoint, memory, and task narrative files at the CHECKPOINT_PATH / MEMORY_PATH / TASK_MEM_DIR locations declared above. After all writes and tool calls, stop immediately.`,
   ].join("\n")
 }
 
@@ -778,7 +790,15 @@ export const layer: Layer.Layer<
         : "This is the first checkpoint of this session. No prior checkpoint exists; MEMORY.md and the task narrative directory likely don't exist yet either."
 
       const progressDiff = yield* Effect.promise(() => buildProgressDiff(input.sessionID))
-      const promptText = composeWriterPrompt({ checkpointFile, memoryFile, taskMemDir, notesFile, rangeDesc, progressDiff })
+      const promptText = composeWriterPrompt({
+        checkpointFile,
+        memoryFile,
+        taskMemDir,
+        notesFile,
+        rangeDesc,
+        progressDiff,
+        gptToolset: usesGPTToolset(input.model.modelID, undefined, input.model.providerID),
+      })
 
       // v6: spawn writer as subagent — shared sessionID, automatic
       // ActorRegistry registration, automatic tool whitelist enforcement
