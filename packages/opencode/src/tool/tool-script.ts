@@ -381,11 +381,20 @@ export function readJailRoots(
   directory: string,
   dataPath: string,
   tmpRoots: string[],
-  memoryScope?: { sessionID?: string; projectID?: string },
+  memoryScope?: { sessionID?: string; parentSessionID?: string; projectID?: string },
 ): string[] {
   const roots = [worktree === "/" ? directory : worktree, ...tmpRoots]
   const memory = path.join(dataPath, "memory")
   if (memoryScope?.sessionID) roots.push(path.join(memory, "sessions", memoryScope.sessionID))
+  // The PARENT session's directory, and only it. The checkpoint writer runs in its own
+  // forked session but reads and patches the checkpoint of the session it writes FOR — which
+  // lives under the parent. Narrowing to the current session alone (the first fix for the
+  // over-wide grant) therefore broke the single agent the grant existed for: measured live,
+  // "path outside allowed roots … /memory/sessions/<parent>/checkpoint.md".
+  //
+  // Narrowing a set is as much a behaviour change as widening it. One level, not a chain:
+  // a chain would creep back toward the whole tree.
+  if (memoryScope?.parentSessionID) roots.push(path.join(memory, "sessions", memoryScope.parentSessionID))
   if (memoryScope?.projectID) roots.push(path.join(memory, "projects", memoryScope.projectID))
   return roots
 }
@@ -704,8 +713,11 @@ export const ToolScriptTool = Tool.define(
               return undefined
             }
           })()
+          const parentSessionID =
+            typeof ctx.extra?.parentSessionID === "string" ? ctx.extra.parentSessionID : undefined
           const jailRoots = readJailRoots(ins.worktree, ins.directory, Global.Path.data, tmpRoots, {
             sessionID: ctx.sessionID,
+            parentSessionID,
             projectID: memoryProjectID,
           })
 

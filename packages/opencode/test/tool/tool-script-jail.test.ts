@@ -115,3 +115,37 @@ describe("джейл гостевого скрипта: дерево памят�
     expect(readJailRoots("/", "/proj", "/data", [])[0]).toBe("/proj")
   })
 })
+
+describe("джейл писателя чекпоинтов — родительская сессия", () => {
+  // ⚠ РЕГРЕССИЯ, найденная живым прогоном. Первый вариант расширения открывал `<data>/memory`
+  // целиком; критика справедливо это сузила — до каталога ТЕКУЩЕЙ сессии. Но писатель
+  // чекпоинтов работает в СВОЕЙ форкнутой сессии, а правит чекпоинт той, ради которой запущен,
+  // и тот лежит под РОДИТЕЛЕМ. Сужение сломало единственного агента, ради которого расширение
+  // и делалось: «path outside allowed roots … /memory/sessions/<parent>/checkpoint.md».
+  //
+  // Сужение множества — такое же изменение поведения, как расширение.
+  const DATA = "/data"
+  const roots = readJailRoots("/repo", "/repo", DATA, ["/tmp"], {
+    sessionID: "ses_child",
+    parentSessionID: "ses_parent",
+    projectID: "prj_1",
+  })
+
+  test("чекпоинт РОДИТЕЛЬСКОЙ сессии доступен на чтение", () => {
+    expect(() => resolveJailed(roots, "/data/memory/sessions/ses_parent/checkpoint.md", "read")).not.toThrow()
+  })
+
+  test("НЕГАТИВНЫЙ: чужая сессия — ни своя, ни родительская — недоступна", () => {
+    expect(() => resolveJailed(roots, "/data/memory/sessions/ses_stranger/checkpoint.md", "read")).toThrow()
+  })
+
+  test("НЕГАТИВНЫЙ: без родителя его каталог не открывается", () => {
+    const own = readJailRoots("/repo", "/repo", DATA, ["/tmp"], { sessionID: "ses_child", projectID: "prj_1" })
+    expect(() => resolveJailed(own, "/data/memory/sessions/ses_parent/checkpoint.md", "read")).toThrow()
+  })
+
+  test("НЕГАТИВНЫЙ: цепочка предков НЕ открывается — только один уровень", () => {
+    // Иначе грант пополз бы обратно к целому дереву памяти.
+    expect(roots.filter(r => r.includes("/memory/sessions/")).length).toBe(2)
+  })
+})
