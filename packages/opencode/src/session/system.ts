@@ -64,8 +64,24 @@ export function agent(agent: Agent.Info, model: Provider.Model, harness?: Harnes
   //
   // Other model families keep upstream behaviour: their prompts are conversational, the
   // agent prompt is a legitimate replacement, and prepending would change their contract.
-  if (usesGPTToolset(model.id, harness, model.api.id)) return [...provider(model, harness), agent.prompt]
-  return [agent.prompt]
+  // Аргументы — та же четвёрка, что у реестра инструментов (`tool/registry.ts`,
+  // `session/prompt.ts`). Трёхаргументная форма теряла `model.family`, и для модели, у которой
+  // признак GPT несёт только family, реестр отдавал GPT-набор, а руководство к нему не ехало —
+  // исходный дефект оставался в силе ровно для того класса, ради которого поле и заведено.
+  if (!usesGPTToolset(model.id, harness, model.api.id, model.family)) return [agent.prompt]
+
+  // Агенту БЕЗ инструментов харнесс-руководство не нужно и вредно: `title`, `summary` и
+  // `compaction` объявлены с `toolAllowlist: []`, и 26 КБ описания `tools.<id>()` — это
+  // инструкция к тому, чего у них нет. Рост промпта был бы 13-42× (title 2 179 → 28 606 Б),
+  // причём генерация заголовка идёт на КАЖДУЮ сессию и как эфемерная не покрыта префикс-кэшем.
+  // Это тот же класс, что чинит правка писателя, — обещать несуществующие инструменты.
+  if (agent.toolAllowlist !== undefined && agent.toolAllowlist.length === 0) return [agent.prompt]
+
+  // Именно PROMPT_GPT, а не `provider(model, harness)`: набор инструментов уже признан
+  // GPT-набором выше, а `provider` решает по слагу и признак `family` не смотрит вовсе —
+  // для модели, у которой GPT-признак несёт только family, оттуда приехал бы PROMPT_DEFAULT,
+  // то есть руководство к ДРУГОМУ харнессу. Одно решение — один источник.
+  return [PROMPT_GPT, agent.prompt]
 }
 
 export interface Interface {
