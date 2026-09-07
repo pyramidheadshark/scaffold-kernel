@@ -1553,6 +1553,11 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         extra: {
           model: input.model,
           harness: input.harness,
+          // The session this one was forked from. The checkpoint writer runs in its OWN
+          // session but reads and patches the checkpoint of the session it is writing FOR,
+          // which lives under the parent's memory directory. Without this the guest-script
+          // jail — keyed on the current session id — rejects the writer's own target.
+          parentSessionID: input.session.parentID,
           bypassAgentCheck: input.bypassAgentCheck,
           promptOps,
           ...(whitelist ? { toolWhitelist: [...whitelist] } : {}),
