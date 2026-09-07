@@ -22,6 +22,11 @@ export const SessionTable = sqliteTable(
     workspace_id: text().$type<WorkspaceID>(),
     parent_id: text().$type<SessionID>(),
     context_from: text().$type<SessionID>(),
+    // Откуда сессия форкнута. `Session.fork` копировал сообщения и не оставлял НИ ОДНОЙ
+    // ссылки на источник: продолжение работы в новой сессии было неотличимо от новой
+    // сессии с нуля. `context_from` для этого не годится — он меняет ПОВЕДЕНИЕ (по нему
+    // `message-v2.stream` подмешивает сообщения родителя, а здесь они уже скопированы).
+    forked_from: text().$type<SessionID>(),
     context_watermark: text().$type<MessageID>(),
     slug: text().notNull(),
     directory: text().notNull(),
@@ -50,6 +55,7 @@ export const SessionTable = sqliteTable(
     index("session_workspace_idx").on(table.workspace_id),
     index("session_parent_idx").on(table.parent_id),
     index("session_context_from_idx").on(table.context_from),
+    index("session_forked_from_idx").on(table.forked_from),
   ],
 )
 
