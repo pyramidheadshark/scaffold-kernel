@@ -40,6 +40,7 @@ describe("Checkpoint templates v8.1", () => {
       notesFile: "/tmp/test/notes.md",
       rangeDesc: "test range",
       progressDiff: "",
+    gptToolset: false,
     })
     // Every section budget must be substituted into the prompt
     for (const [section, budget] of Object.entries(CHECKPOINT_SECTION_BUDGETS)) {
