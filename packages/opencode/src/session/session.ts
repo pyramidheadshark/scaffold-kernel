@@ -78,6 +78,7 @@ export function fromRow(row: SessionRow): Info {
     directory: row.directory,
     parentID: row.parent_id ?? undefined,
     contextFrom: row.context_from ?? undefined,
+    forkedFrom: row.forked_from ?? undefined,
     contextWatermark: row.context_watermark ?? undefined,
     title: row.title,
     version: row.version,
@@ -102,6 +103,7 @@ export function toRow(info: Info) {
     workspace_id: info.workspaceID,
     parent_id: info.parentID,
     context_from: info.contextFrom,
+    forked_from: info.forkedFrom,
     context_watermark: info.contextWatermark,
     slug: info.slug,
     directory: info.directory,
@@ -148,6 +150,7 @@ export const Info = z
     directory: z.string(),
     parentID: SessionID.zod.optional(),
     contextFrom: SessionID.zod.optional(),
+    forkedFrom: SessionID.zod.optional(),
     contextWatermark: MessageID.zod.optional(),
     summary: z
       .object({
@@ -486,6 +489,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service | 
       title?: string
       parentID?: SessionID
       contextFrom?: SessionID
+      forkedFrom?: SessionID
       contextWatermark?: MessageID
       workspaceID?: WorkspaceID
       directory: string
@@ -502,6 +506,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service | 
         workspaceID: input.workspaceID,
         parentID: input.parentID,
         contextFrom: input.contextFrom,
+        forkedFrom: input.forkedFrom,
         contextWatermark: input.contextWatermark,
         title: input.title ?? createDefaultTitle(!!input.parentID),
         permission: input.permission,
@@ -699,6 +704,12 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service | 
         workspaceID: original.workspaceID,
         title,
         prompt: original.prompt,
+        // Провенанс форка. Без него продолжение работы в новой сессии неотличимо от новой
+        // сессии с нуля: сообщения копируются, а ссылки на источник не остаётся нигде.
+        // НЕ `parentID` — он означает порождение субагента, и запрос по нему смешал бы
+        // сотни спавнов с единичными продолжениями. НЕ `contextFrom` — он меняет поведение
+        // (`message-v2.stream` подмешал бы сообщения источника поверх уже скопированных).
+        forkedFrom: input.sessionID,
       })
       const msgs = yield* messages({ sessionID: input.sessionID, agentID: "*" })
       const idMap = new Map<string, MessageID>()

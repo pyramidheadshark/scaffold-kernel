@@ -43,6 +43,7 @@ export function toPartialRow(info: DeepPartial<Session.Info>) {
     workspace_id: grab(info, "workspaceID"),
     parent_id: grab(info, "parentID"),
     context_from: grab(info, "contextFrom"),
+    forked_from: grab(info, "forkedFrom"),
     context_watermark: grab(info, "contextWatermark"),
     slug: grab(info, "slug"),
     directory: grab(info, "directory"),
