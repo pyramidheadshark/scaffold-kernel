@@ -23,7 +23,7 @@ import type { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
 import { Skill } from "@/skill"
 import { Flag } from "@/flag/flag"
-import { type HarnessMode, isGPTModel } from "@/tool/gpt"
+import { type HarnessMode, isGPTModel, usesGPTToolset } from "@/tool/gpt"
 
 function renderGitResult(result: Git.Result, fallback = "(none)") {
   if (result.exitCode !== 0) return fallback
@@ -49,7 +49,23 @@ export function provider(model: Provider.Model, harness?: HarnessMode) {
 }
 
 export function agent(agent: Agent.Info, model: Provider.Model, harness?: HarnessMode) {
-  return agent.prompt ? [agent.prompt] : provider(model, harness)
+  if (!agent.prompt) return provider(model, harness)
+  // An agent prompt describes WHAT the agent does. The provider prompt describes HOW the
+  // harness works — for the GPT toolset that is the `exec` tool-script contract: the
+  // `tools.<id>()` namespace, which tools exist inside a script, and the requirement to
+  // batch independent calls with Promise.all. An agent prompt cannot supply that: the
+  // namespace is kernel knowledge, not agent knowledge.
+  //
+  // Replacing the provider prompt therefore leaves GPT-toolset models to GUESS tool names
+  // inside `exec`. Measured on 149 stored prefixes: every session carrying an agent prompt
+  // (145) lost the harness guide, and the four that kept it were spawns with no agent
+  // prompt. Downstream: 42 of 79 checkpoint-writer `exec` failures were `unknown tool: …`,
+  // and nested calls per script sat at 0.998 of the 8 available concurrency slots.
+  //
+  // Other model families keep upstream behaviour: their prompts are conversational, the
+  // agent prompt is a legitimate replacement, and prepending would change their contract.
+  if (usesGPTToolset(model.id, harness, model.api.id)) return [...provider(model, harness), agent.prompt]
+  return [agent.prompt]
 }
 
 export interface Interface {

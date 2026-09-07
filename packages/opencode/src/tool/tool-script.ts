@@ -6,6 +6,7 @@ import ts from "typescript"
 import { Effect } from "effect"
 import type { Tool as AiTool } from "ai"
 import { EffectBridge, InstanceState } from "@/effect"
+import { Global } from "@/global"
 import { Log, Filesystem, ToolCompat } from "@/util"
 import { Agent } from "@/agent/agent"
 import { Plugin } from "../plugin"
@@ -360,14 +361,24 @@ function realpathBestEffort(p: string): string {
   }
 }
 
-function resolveJailed(roots: string[], p: string, kind: "read" | "write"): string {
+/**
+ * Roots a guest script may READ from. Writes use `tmpRoots` alone — see the `files.write`
+ * call site.
+ */
+export function readJailRoots(worktree: string, directory: string, dataPath: string, tmpRoots: string[]): string[] {
+  return [worktree === "/" ? directory : worktree, ...tmpRoots, path.join(dataPath, "memory")]
+}
+
+/** Exported for tests: the jail is the only thing standing between a guest script and
+ * the rest of the filesystem, so its composition needs a red/green proof, not a reading. */
+export function resolveJailed(roots: string[], p: string, kind: "read" | "write"): string {
   const canonRoots = roots.map(realpathBestEffort)
   const abs = realpathBestEffort(path.resolve(canonRoots[0], p))
   if (canonRoots.some((root) => abs === root || Filesystem.contains(root, abs))) return abs
   throw new Error(
     kind === "write"
       ? `files.writeText is limited to the OS temp dir — write project files via tools.apply_patch: ${JSON.stringify(p)}`
-      : `path outside allowed roots (worktree, tmp): ${JSON.stringify(p)}`,
+      : `path outside allowed roots (worktree, tmp, agent memory): ${JSON.stringify(p)}`,
   )
 }
 
@@ -654,7 +665,17 @@ export const ToolScriptTool = Tool.define(
           // description's staging example uses "/tmp/..." — both must work.
           const ins = yield* InstanceState.context
           const tmpRoots = [os.tmpdir(), ...(process.platform === "win32" ? [] : ["/tmp"])]
-          const jailRoots = [ins.worktree === "/" ? ins.directory : ins.worktree, ...tmpRoots]
+          // The agent's own memory tree is READABLE, never writable: `<data>/memory` holds the
+          // checkpoint, notes and MEMORY.md that checkpoint-writer edits with apply_patch. It
+          // sat outside the jail, so the writer could not read the file it was rewriting and
+          // invented apply_patch context lines instead — 23 of its 79 exec failures were
+          // literally `path outside allowed roots` on `<data>/memory/sessions/<sid>/checkpoint.md`.
+          //
+          // Reads only, and deliberately not `<data>` itself: `auth.json` and the session
+          // database live one level up and must stay unreachable from guest scripts. Writes keep
+          // using `tmpRoots` (see the `files.write` call site) — project text changes go through
+          // apply_patch, which is permission-aware and reviewable.
+          const jailRoots = readJailRoots(ins.worktree, ins.directory, Global.Path.data, tmpRoots)
 
           // Snapshot the Effect context BEFORE crossing into Promise-land: the
           // quickjs hook boundary loses Instance/Workspace context otherwise.
