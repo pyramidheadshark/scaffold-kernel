@@ -258,7 +258,16 @@ describe("session.system", () => {
     expect(SystemPrompt.provider(model, "default")[0]).not.toBe(gpt)
   })
 
-  test("uses the same prompted subagent system across models", () => {
+  // Contract change (Scaffold): a prompted agent no longer *replaces* the provider prompt on
+  // GPT-toolset models. The agent prompt says WHAT the agent does; the provider prompt says HOW
+  // the `exec` tool-script harness works — the `tools.<id>()` namespace, which tools exist
+  // inside a script, and the Promise.all batching requirement. An agent prompt cannot supply
+  // that, so replacing it left GPT models guessing tool names inside `exec`.
+  //
+  // The model-independence this test originally pinned survives where it is meaningful: the
+  // AGENT segment is byte-identical across families. What legitimately differs is the harness
+  // segment, and it differs because the harnesses differ.
+  test("prompted subagent: agent segment identical across models, harness only for GPT toolset", () => {
     const subagent = {
       name: "general",
       mode: "subagent" as const,
@@ -275,8 +284,14 @@ describe("session.system", () => {
       ProviderTest.model({ id: ModelID.make("claude-sonnet-4-6"), api: { id: "claude-sonnet-4-6" } as never }),
     )
 
-    expect(gpt).toEqual([subagent.prompt])
-    expect(claude).toEqual(gpt)
+    // Anthropic keeps upstream behaviour: the agent prompt is a legitimate replacement.
+    expect(claude).toEqual([subagent.prompt])
+    // GPT toolset additionally carries the harness contract, agent segment last.
+    expect(gpt.length).toBe(2)
+    expect(gpt[0]).toContain("You are Codex, an agent based on GPT-5.")
+    expect(gpt.at(-1)).toBe(subagent.prompt)
+    // The part that must stay model-independent does: the agent segment itself.
+    expect(gpt.at(-1)).toBe(claude[0])
   })
 
   test("prefers the catalog model ID when the API deployment ID is opaque", () => {
