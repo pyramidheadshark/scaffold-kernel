@@ -711,6 +711,17 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service | 
         // (`message-v2.stream` подмешал бы сообщения источника поверх уже скопированных).
         forkedFrom: input.sessionID,
       })
+      // Провенанс без ЯКОРЯ бесполезен для приоритета «долгая сессия»: чекпоинт-лестница
+      // форкнутой сессии стартует с чистого листа, независимо от того, сколько порогов
+      // уже прошёл источник, — второй "день" немедленно повторяет самый дорогой (первый)
+      // прогон checkpoint-writer, вместо того чтобы продолжить с уже пройденного места.
+      // Читаем ДО копирования сообщений: `last_checkpoint_message_id` источника ссылается
+      // на ID из СТАРОЙ сессии, и его нужно перевести через ту же idMap, что и остальные.
+      const originalRow = yield* db((d) =>
+        d.select({ last: SessionTable.last_checkpoint_message_id }).from(SessionTable).where(eq(SessionTable.id, input.sessionID)).get(),
+      )
+      const originalLastCheckpoint = originalRow?.last
+
       const msgs = yield* messages({ sessionID: input.sessionID, agentID: "*" })
       const idMap = new Map<string, MessageID>()
 
@@ -736,6 +747,20 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service | 
           })
         }
       }
+
+      // Перенести якорь ПОСЛЕ копирования — idMap заполнена только теперь. Промах
+      // (исходный ID не попал в копию, напр. `input.messageID` обрезал историю раньше
+      // якоря) — не ошибка: новая сессия просто стартует лестницу заново, тот же
+      // результат, что был ДО этого фикса, а не хуже него.
+      if (originalLastCheckpoint) {
+        const mapped = idMap.get(originalLastCheckpoint)
+        if (mapped) {
+          yield* db((d) =>
+            d.update(SessionTable).set({ last_checkpoint_message_id: mapped }).where(eq(SessionTable.id, session.id)).run(),
+          )
+        }
+      }
+
       return session
     })
 
