@@ -83,15 +83,23 @@ jobs:
     needs: resolve-matrix
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout pinned ref (source to verify)
+        uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+          path: kernel-src
+      - name: Checkout main (verifier tooling)
+        # Тот же приём, что в pi-scaffold/build-kernel.yml ("Checkout pi-scaffold
+        # (verifier source)"): verify-fork-patches.sh — тулинг, не патченый исходник,
+        # и не обязан существовать в старом закреплённом теге (inputs.ref может
+        # указывать на тег, созданный ДО того, как скрипт сюда завезли). Берём его
+        # всегда с main этого же репозитория, независимо от того, что проверяем.
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: verifier
       - name: Verify critical Scaffold patches (PI-80/PI-129)
-        # Тот же скрипт, что и в build-kernel.yml, вендорен сюда (владелец 08.09.2026):
-        # запускается против КОРНЯ ЭТОГО репозитория напрямую — checkout уже дал нам
-        # то дерево, которое проверяет verify-fork-patches.sh, отдельного клонирования
-        # форка не требуется (мы и есть форк).
-        run: bash scripts/fork-setup/verify-fork-patches.sh --strict .
+        run: bash verifier/scripts/fork-setup/verify-fork-patches.sh --strict kernel-src
 
   build:
     name: Build ${{ matrix.target }}
