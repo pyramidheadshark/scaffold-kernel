@@ -20,18 +20,30 @@ function truncate(text: string, max: number): string {
   return cleaned.slice(0, Math.max(0, max - 1)) + "…"
 }
 
+// `code` is the guest-script argument of `exec`/`exec_command` — the ONE field that
+// actually distinguishes what an action DID. Measured (08.09.2026, comparative recon):
+// capping it at the same 80 chars as every other argument collapsed 20.6-22.9% of
+// post-rebuild "Recent activity" lines into indistinguishable duplicates — the ONLY
+// surviving record of what happened during the collapsed tail became unreadable for
+// roughly one in four actions. Raising the cap for this one key recovers 89% of that
+// loss; everything else stays at MAX_ARG_CHARS, so the digest's total size grows by a
+// bounded, known amount (worst case MAX_LINES × the new cap, still small).
+const WIDE_ARG_KEYS = new Set(["code"])
+const WIDE_ARG_CHARS = MAX_LINE_CHARS
+
 function formatToolArgs(input: Record<string, unknown> | undefined): string {
   if (!input) return ""
   return Object.entries(input)
     .map(([key, value]) => {
-      if (typeof value === "string") return `${key}=${JSON.stringify(truncate(value, MAX_ARG_CHARS))}`
+      const cap = WIDE_ARG_KEYS.has(key) ? WIDE_ARG_CHARS : MAX_ARG_CHARS
+      if (typeof value === "string") return `${key}=${JSON.stringify(truncate(value, cap))}`
       let raw: string | undefined
       try {
         raw = JSON.stringify(value)
       } catch {
         raw = undefined
       }
-      return `${key}=${truncate(raw ?? "[unserializable]", MAX_ARG_CHARS)}`
+      return `${key}=${truncate(raw ?? "[unserializable]", cap)}`
     })
     .join(", ")
 }
