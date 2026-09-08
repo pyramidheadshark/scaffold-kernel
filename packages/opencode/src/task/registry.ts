@@ -84,6 +84,13 @@ export interface Interface {
   readonly start: (input: { session_id: SessionID; id: string; owner?: string; event_summary?: string }) => Effect.Effect<Task>
 
   readonly events: (input: { session_id: SessionID; task_id: string }) => Effect.Effect<TaskEvent[]>
+
+  // `Session.fork` копирует message/part через idMap, но НЕ доску задач — форкнутая
+  // сессия видела "Task T1 not found" на любой ссылке из старого Mission Brief.
+  // Копия сохраняет ID задач как есть (они уже session-scoped, PK = session_id+id,
+  // коллизий с пустой новой сессией нет) и НЕ переоткрывает терминальный статус —
+  // это перенос доски как есть, а не восстановление к "open".
+  readonly copySession: (input: { source_session_id: SessionID; target_session_id: SessionID }) => Effect.Effect<number>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/TaskRegistry") {}
@@ -376,6 +383,39 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
       return updated
     })
 
+    const copySession = Effect.fn("TaskRegistry.copySession")(function* (input: {
+      source_session_id: SessionID
+      target_session_id: SessionID
+    }) {
+      const taskRows = Database.use((db) =>
+        db.select().from(TaskTable).where(eq(TaskTable.session_id, input.source_session_id)).all(),
+      )
+      if (taskRows.length === 0) return 0
+
+      Database.use((db) =>
+        db
+          .insert(TaskTable)
+          .values(taskRows.map((row) => ({ ...row, session_id: input.target_session_id })))
+          .run(),
+      )
+
+      const eventRows = Database.use((db) =>
+        db.select().from(TaskEventTable).where(eq(TaskEventTable.session_id, input.source_session_id)).all(),
+      )
+      if (eventRows.length > 0) {
+        // `id` — глобальный autoincrement PK (не session-scoped, в отличие от TaskTable),
+        // держать исходные значения означало бы гарантированную коллизию.
+        Database.use((db) =>
+          db
+            .insert(TaskEventTable)
+            .values(eventRows.map(({ id: _id, ...rest }) => ({ ...rest, session_id: input.target_session_id })))
+            .run(),
+        )
+      }
+
+      return taskRows.length
+    })
+
     return Service.of({
       create,
       list,
@@ -387,6 +427,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
       abandon,
       rename,
       start,
+      copySession,
     })
   }),
 )

@@ -162,4 +162,43 @@ describe("session task route", () => {
       }),
     )
   })
+  test("POST /:sid/fork переносит доску задач в форкнутую сессию (не терминальный статус остаётся open, терминальный — не переоткрывается)", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await withoutWatcher(() =>
+      Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const session = await createSession()
+          const app = Server.Default().app
+
+          const open = await runTask(
+            TaskRegistry.Service.use((reg) => reg.create({ session_id: session.id, summary: "ещё не сделано" })),
+          )
+          const finished = await runTask(
+            TaskRegistry.Service.use((reg) => reg.create({ session_id: session.id, summary: "уже сделано" })),
+          )
+          await runTask(TaskRegistry.Service.use((reg) => reg.done({ session_id: session.id, id: finished.id })))
+
+          const forkRes = await app.request(`/session/${session.id}/fork`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({}),
+          })
+          expect(forkRes.status).toBe(200)
+          const forked = (await forkRes.json()) as { id: SessionID }
+          expect(forked.id).not.toBe(session.id)
+
+          const taskRes = await app.request(`/session/${forked.id}/task?include_terminal=true`)
+          expect(taskRes.status).toBe(200)
+          const body = (await taskRes.json()) as Task[]
+          const byId = new Map(body.map((t) => [t.id, t]))
+
+          // Открытая задача переехала под тем же ID и осталась открытой.
+          expect(byId.get(open.id)?.status).toBe("open")
+          // НЕГАТИВНЫЙ: закрытая задача переехала закрытой, а не переоткрылась копией.
+          expect(byId.get(finished.id)?.status).toBe("done")
+        },
+      }),
+    )
+  })
 })
