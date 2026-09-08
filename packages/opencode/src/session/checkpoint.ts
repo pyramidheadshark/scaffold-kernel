@@ -25,7 +25,7 @@ import { Log, Token } from "../util"
 import { Effect, Layer, Deferred, Context, Scope } from "effect"
 import { makeRuntime } from "@/effect/run-service"
 import type { ActorPromptOps } from "@/tool/actor"
-import { usesGPTToolset } from "@/tool/gpt"
+import { type HarnessMode, usesGPTToolset } from "@/tool/gpt"
 import type { ProviderID, ModelID } from "../provider/schema"
 import PROMPT_CHECKPOINT_WRITER from "@/agent/prompt/checkpoint-writer.txt"
 import { WriterCachePerf } from "@/actor/events"
@@ -459,7 +459,8 @@ function aggregateWriterCacheMetrics(
 
 export type TryStartCheckpointWriterInput = {
   sessionID: SessionID
-  model: { providerID: string; modelID: string }
+  model: { providerID: string; modelID: string; apiID?: string; family?: string }
+  harness?: HarnessMode
   promptOps: ActorPromptOps
 }
 
@@ -815,17 +816,17 @@ export const layer: Layer.Layer<
         notesFile,
         rangeDesc,
         progressDiff,
-        // ⚠ Граница названа честно. Реестр решает состав инструментов ЧЕТЫРЬМЯ аргументами
-        // (`tool/registry.ts`: modelID, harness, apiModelID, family), а сюда доезжают только
-        // `providerID` и `modelID`. Прежняя редакция передавала `providerID` третьим
-        // вариадическим — там ждут идентификатор МОДЕЛИ, и `isGPTModel("openai")` ложно, то
-        // есть аргумент не работал ни в одну сторону и создавал видимость проверки. Убран.
-        //
-        // Что остаётся непокрытым: модель, у которой признак GPT несёт только `family`, и
-        // явный `harness: "codex"` на не-GPT слаге. Оба случая требуют прокидывания полей
-        // через `TryStartCheckpointWriterInput` — отдельная правка, не эта. Для нашего пула
-        // (`gpt-5.6-*`) признак несёт сам `modelID`, поэтому текущая форма верна.
-        gptToolset: usesGPTToolset(input.model.modelID),
+        // Реестр решает состав инструментов ЧЕТЫРЬМЯ аргументами (`tool/registry.ts`:
+        // modelID, harness, apiModelID, family) — все четыре доезжают сюда через
+        // `TryStartCheckpointWriterInput` (прежняя редакция передавала только два, см.
+        // git-историю: `providerID` третьим вариадическим не работал вовсе, `isGPTModel
+        // ("openai")` ложно). Значимо с введением `needsCompactGPTToolset`
+        // (2026-09-08): для gpt-5.6 короткое замыкание на `isGPTModel` снято, и
+        // `usesGPTToolset` начинает реально читать `harness` — без него сессия с явным
+        // `harness:"codex"` (форс-откат к компактному тулсету) рассинхронизировала бы этот
+        // промпт (скажет "read/write/edit доступны") с реальным реестром (даст только
+        // apply_patch/task).
+        gptToolset: usesGPTToolset(input.model.modelID, input.harness, input.model.apiID, input.model.family),
       })
 
       // v6: spawn writer as subagent — shared sessionID, automatic

@@ -12,6 +12,7 @@ import { pressureLevel, usable } from "./overflow"
 import { SessionCheckpoint } from "./checkpoint"
 import { ActorRegistry } from "@/actor/registry"
 import type { ActorPromptOps } from "@/tool/actor"
+import type { HarnessMode } from "@/tool/gpt"
 
 const log = Log.create({ service: "session.prune" })
 
@@ -152,6 +153,7 @@ export interface Interface {
     tokens: MessageV2.Assistant["tokens"]
     promptOps: ActorPromptOps
     agentID?: string
+    harness?: HarnessMode
   }) => Effect.Effect<void>
   /** Clear the crossed-threshold state for a session (e.g. after discard+rebuild). */
   readonly resetThresholds: (sessionID: SessionID) => Effect.Effect<void>
@@ -244,6 +246,7 @@ export const layer: Layer.Layer<
       tokens: MessageV2.Assistant["tokens"]
       promptOps: ActorPromptOps
       agentID?: string
+      harness?: HarnessMode
     }) {
       // Checkpoint serves main/peer only; subagents use per-actor compaction
       // (independent layers — see 2026-05-22-checkpoint-v8-design.md:71), and
@@ -321,7 +324,13 @@ export const layer: Layer.Layer<
         const outcome = yield* checkpoint
           .tryStartCheckpointWriter({
             sessionID: input.sessionID,
-            model: { providerID: input.model.providerID, modelID: input.model.id },
+            model: {
+              providerID: input.model.providerID,
+              modelID: input.model.id,
+              apiID: input.model.api?.id,
+              family: input.model.family,
+            },
+            harness: input.harness,
             promptOps: input.promptOps,
           })
           .pipe(Effect.catch(() => Effect.succeed<"started" | "queued" | "skipped">("skipped")))

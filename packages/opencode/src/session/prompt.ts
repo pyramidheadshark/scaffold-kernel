@@ -139,7 +139,7 @@ import {
   type McpToolSearchEntry,
   type McpToolSearchMetadata,
 } from "@/tool/mcp-tool-search"
-import { isMcpToolSearchEnabled, usesGPTToolset } from "@/tool/gpt"
+import { type HarnessMode, isMcpToolSearchEnabled, usesGPTToolset } from "@/tool/gpt"
 import { GPT_TOP_LEVEL_TOOLS } from "@/tool/tool-script-ref"
 import { SessionPrefixSnapshot } from "./prefix-snapshot"
 
@@ -671,7 +671,8 @@ export const layer = Layer.effect(
       msgs: MessageV2.WithParts[]
       agentID?: string
       agent: string
-      model: { providerID: string; id: string }
+      model: { providerID: string; id: string; apiID?: string; family?: string }
+      harness?: HarnessMode
       /** Upper bound on the writer wait; see {AUTO,MANUAL}_WRITER_WAIT_MS. */
       writerWaitMs: number
       /** Run once, immediately before the wait begins, to explain the stall. */
@@ -749,7 +750,13 @@ export const layer = Layer.effect(
         yield* checkpoint
           .tryStartCheckpointWriter({
             sessionID: input.sessionID,
-            model: { providerID: input.model.providerID, modelID: input.model.id },
+            model: {
+              providerID: input.model.providerID,
+              modelID: input.model.id,
+              apiID: input.model.apiID,
+              family: input.model.family,
+            },
+            harness: input.harness,
             promptOps: {} as never,
           })
           .pipe(Effect.catch(() => Effect.succeed<"started" | "queued" | "skipped">("skipped")))
@@ -3960,6 +3967,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 tokens: lastFinished.tokens,
                 promptOps: fireOps,
                 agentID: lastUser.agentID,
+                harness: lastUser.harness,
               })
               .pipe(Effect.ignore)
           }
@@ -4009,7 +4017,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               msgs,
               agentID: lastUser.agentID,
               agent: lastUser.agent,
-              model: { providerID: model.providerID, id: model.id },
+              model: { providerID: model.providerID, id: model.id, apiID: model.api?.id, family: model.family },
+              harness: lastUser.harness,
               writerWaitMs: AUTO_WRITER_WAIT_MS,
               // The turn is mid-flight, so explain the stall: without this the
               // TUI would sit on a bare spinner for minutes with no reason.
@@ -4770,7 +4779,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 msgs,
                 agentID: lastUser.agentID,
                 agent: lastUser.agent,
-                model: { providerID: model.providerID, id: model.id },
+                model: { providerID: model.providerID, id: model.id, apiID: model.api?.id, family: model.family },
+                harness: lastUser.harness,
                 writerWaitMs: AUTO_WRITER_WAIT_MS,
                 onWaitingForWriter: status
                   .set(sessionID, { type: "busy", message: "Writing checkpoint\u2026" })
@@ -5067,7 +5077,14 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           msgs,
           agentID: lastUser?.info.agentID ?? "main",
           agent: agentName,
+          // `model` here comes from lastModel()'s persisted {providerID, modelID, variant}
+          // (message-v2.ts UserMessage.model schema), not the resolved provider catalog
+          // entry — apiID/family are unavailable without an extra provider.get() round trip,
+          // so this path stays narrower than the runLoop call sites above (both threaded
+          // harness AND the full model shape). harness is cheap here (already on the
+          // message) and threaded for the same reason those two were.
           model: { providerID: model.providerID, id: model.modelID },
+          harness: lastUser?.info.role === "user" ? lastUser.info.harness : undefined,
           writerWaitMs: MANUAL_WRITER_WAIT_MS,
           onWaitingForWriter: status
             .set(input.sessionID, { type: "busy", message: "Writing checkpoint\u2026" })

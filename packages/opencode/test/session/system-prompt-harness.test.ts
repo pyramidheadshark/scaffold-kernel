@@ -24,20 +24,20 @@ function withPrompt(prompt?: string, toolAllowlist?: string[]) {
 
 describe("SystemPrompt.agent — харнесс-руководство не вытесняется промптом роли", () => {
   test("GPT-модель с промптом роли получает ОБА: харнесс и роль", () => {
-    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT), model("gpt-5.6-terra"))
+    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT), model("gpt-5.4"))
     expect(out.length).toBe(2)
     expect(out[0]).toContain(GPT_PROMPT_MARKER)
     expect(out[1]).toBe(ROLE_PROMPT)
   })
 
   test("порядок: харнесс первым — он стабилен и держит префикс-кэш", () => {
-    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT), model("gpt-5.6-sol"))
+    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT), model("gpt-5.4"))
     expect(out[0]).toContain(GPT_PROMPT_MARKER)
     expect(out.at(-1)).toBe(ROLE_PROMPT)
   })
 
   test("харнесс определяется и по api.id, а не только по id", () => {
-    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT), model("codex-flagship", "openai/gpt-5.6-sol"))
+    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT), model("codex-flagship", "openai/gpt-5.4"))
     expect(out.length).toBe(2)
     expect(out[0]).toContain(GPT_PROMPT_MARKER)
   })
@@ -60,12 +60,12 @@ describe("SystemPrompt.agent — харнесс-руководство не вы
     // `title`, `summary`, `compaction` объявлены с toolAllowlist: [] — 26 КБ описания
     // `tools.<id>()` для них инструкция к тому, чего нет. Рост был бы 13-42×, причём
     // генерация заголовка идёт на каждую сессию и как эфемерная не покрыта префикс-кэшем.
-    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT, []), model("gpt-5.6-terra"))
+    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT, []), model("gpt-5.4"))
     expect(out).toEqual([ROLE_PROMPT])
   })
 
   test("агент с непустым списком инструментов харнесс получает", () => {
-    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT, ["apply_patch", "task"]), model("gpt-5.6-terra"))
+    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT, ["apply_patch", "task"]), model("gpt-5.4"))
     expect(out.length).toBe(2)
   })
 
@@ -81,8 +81,24 @@ describe("SystemPrompt.agent — харнесс-руководство не вы
   })
 
   test("агент БЕЗ промпта по-прежнему получает ровно промпт провайдера", () => {
-    const out = SystemPrompt.agent(withPrompt(undefined), model("gpt-5.6-terra"))
+    const out = SystemPrompt.agent(withPrompt(undefined), model("gpt-5.4"))
     expect(out.length).toBe(1)
     expect(out[0]).toContain(GPT_PROMPT_MARKER)
+  })
+
+  test("НЕГАТИВНЫЙ (2026-09-08, живой A/B): gpt-5.6 харнесс НЕ получает — компакция снята, модель ведёт себя как обычная", () => {
+    // Живой прогон подтвердил нативный батчинг у gpt-5.6-terra на полном тулсете без
+    // харнесс-промпта — держать промпт роли одиночным для этой генерации корректно, а не
+    // регрессия найденного здесь же "промпт роли вытеснял харнесс".
+    const out = SystemPrompt.agent(withPrompt(ROLE_PROMPT), model("gpt-5.6-sol"))
+    expect(out).toEqual([ROLE_PROMPT])
+    const out2 = SystemPrompt.agent(withPrompt(ROLE_PROMPT), model("gpt-5.6-terra"))
+    expect(out2).toEqual([ROLE_PROMPT])
+  })
+
+  test("агент БЕЗ промпта на gpt-5.6 получает промпт провайдера по умолчанию (PROMPT_DEFAULT), не харнесс Codex", () => {
+    const out = SystemPrompt.agent(withPrompt(undefined), model("gpt-5.6-terra"))
+    expect(out.length).toBe(1)
+    expect(out[0]).not.toContain(GPT_PROMPT_MARKER)
   })
 })

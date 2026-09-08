@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { isGPTModel, isMcpToolSearchEnabled, usesGPTToolset } from "../../src/tool/gpt"
+import { isGPTModel, isMcpToolSearchEnabled, needsCompactGPTToolset, usesGPTToolset } from "../../src/tool/gpt"
 
 const codexMode = process.env.MIMOCODE_CODEX_MODE
 
@@ -24,6 +24,50 @@ describe("isGPTModel", () => {
     expect(isGPTModel("claude-opus-4-6")).toBe(false)
     expect(isGPTModel("gpt-oss-120b")).toBe(false)
     expect(isGPTModel("company-gpt-production", "gpt-oss-120b", "gpt-oss")).toBe(false)
+  })
+})
+
+describe("needsCompactGPTToolset", () => {
+  test("gpt-5.6 generations are excluded from the compact toolset — live-validated 2026-09-08", () => {
+    expect(needsCompactGPTToolset("gpt-5.6-sol")).toBe(false)
+    expect(needsCompactGPTToolset("gpt-5.6-terra")).toBe(false)
+    expect(needsCompactGPTToolset("gpt-5.6-luna")).toBe(false)
+  })
+
+  test("earlier GPT generations still need the compact toolset — not validated the same way", () => {
+    expect(needsCompactGPTToolset("gpt-5.4")).toBe(true)
+    expect(needsCompactGPTToolset("gpt-5.5")).toBe(true)
+    expect(needsCompactGPTToolset("gpt-5.4-mini")).toBe(true)
+    expect(needsCompactGPTToolset("gpt-5.3-codex")).toBe(true)
+    expect(needsCompactGPTToolset("gpt-4o")).toBe(true)
+  })
+
+  test("non-GPT and GPT-OSS models never need it", () => {
+    expect(needsCompactGPTToolset("claude-opus-4-6")).toBe(false)
+    expect(needsCompactGPTToolset("gpt-oss-120b")).toBe(false)
+  })
+
+  test("matches across multiple candidate ids the same way isGPTModel does", () => {
+    expect(needsCompactGPTToolset("company-alias", "gpt-5.6-sol")).toBe(false)
+    expect(needsCompactGPTToolset("company-alias", "gpt-5.4")).toBe(true)
+  })
+
+  test("matches the exact slug through a provider/ prefix", () => {
+    expect(needsCompactGPTToolset("openai/gpt-5.6-sol")).toBe(false)
+    expect(needsCompactGPTToolset("openai/gpt-5.6-terra")).toBe(false)
+  })
+
+  test("EXACT allowlist, not a substring/prefix match — unvalidated lookalike slugs stay compacted", () => {
+    // The Codex backend itself rejects these (registry.ts KERNEL_KNOWN_OPENAI_SLUGS on the
+    // pi-scaffold side already had to special-case exactly this): a substring match here would
+    // have silently exempted them anyway, which is the bug this test pins against.
+    expect(needsCompactGPTToolset("gpt-5.6")).toBe(true)
+    expect(needsCompactGPTToolset("gpt-5.6-codex")).toBe(true)
+    expect(needsCompactGPTToolset("gpt-5.6-mini")).toBe(true)
+    // A hypothetical future slug that merely CONTAINS "gpt-5.6" must not be swept in by pattern.
+    expect(needsCompactGPTToolset("gpt-5.60")).toBe(true)
+    expect(needsCompactGPTToolset("gpt-5.6.1")).toBe(true)
+    expect(needsCompactGPTToolset("gpt-5.6-sol-preview")).toBe(true)
   })
 })
 
@@ -101,5 +145,22 @@ describe("usesGPTToolset", () => {
     expect(usesGPTToolset("claude-opus-4-6", "default")).toBe(false)
     expect(usesGPTToolset("mimo-v2.6", "default")).toBe(false)
     expect(usesGPTToolset("gpt-5.2", "default")).toBe(true)
+  })
+
+  test("gpt-5.6 gets the native toolset by default — the compaction short-circuit no longer fires", () => {
+    expect(usesGPTToolset("gpt-5.6-sol")).toBe(false)
+    expect(usesGPTToolset("gpt-5.6-terra")).toBe(false)
+    expect(usesGPTToolset("gpt-5.6-luna")).toBe(false)
+    // explicit harness:"codex" is still a working escape hatch to force compaction back on
+    expect(usesGPTToolset("gpt-5.6-sol", "codex")).toBe(true)
+    // explicit harness:"default" is a no-op here (already the effective default), and
+    // process-wide MIMOCODE_CODEX_MODE can still force compaction on for gpt-5.6 too
+    expect(usesGPTToolset("gpt-5.6-sol", "default")).toBe(false)
+  })
+
+  test("older GPT generations are unaffected by the gpt-5.6 carve-out", () => {
+    expect(usesGPTToolset("gpt-5.4")).toBe(true)
+    expect(usesGPTToolset("gpt-5.5")).toBe(true)
+    expect(usesGPTToolset("gpt-5.4-mini", "default")).toBe(true)
   })
 })
