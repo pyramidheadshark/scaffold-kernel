@@ -177,6 +177,45 @@ describe("renderTailDigest", () => {
     expect(text).not.toContain("Do not invent")
   })
 
+  // Найдено сравнительной разведкой 08.09.2026: капая ВСЕ аргументы на 80 символов,
+  // дайджест хвоста схлопывал 20.6-22.9% строк "Recent activity" в неразличимые
+  // дубликаты — единственное, что остаётся от очищенного хвоста, переставало отвечать
+  // на вопрос "что я только что сделал" для каждого четвёртого действия. `code` —
+  // единственный аргумент exec/exec_command, который реально РАЗЛИЧАЕТ действия.
+  test("code-аргумент exec НЕ обрезается до 80 символов — остальные аргументы всё ещё капаются", () => {
+    const longCode = `return await tools.actor({operation:{action:"run",subagent_type:"build",description:"тестовое задание"}})`
+    expect(longCode.length).toBeGreaterThan(80)
+    const text = renderTailDigest([
+      {
+        info: assistantInfo("a1", "u1"),
+        parts: [
+          completedTool("a1", "p1", "exec", { code: longCode, timeout: 60000 }, "OK"),
+          completedTool("a1", "p2", "read", { path: "src/very/deeply/nested/path/that/exceeds/eighty/characters/for/sure/x.ts" }, "OK"),
+        ],
+      },
+    ])
+    // Полный код exec виден целиком (сравниваем с JSON.stringify-формой — так его
+    // рендерит formatToolArgs) — не оборван многоточием.
+    expect(text).toContain(JSON.stringify(longCode))
+    expect(text).not.toContain("…");
+    // Длинный ПУТЬ (не `code`) по-прежнему капается на 80 символов, как раньше.
+    const readLine = text.split("\n").find(l => l.startsWith("- read("))
+    expect(readLine).toBeDefined()
+    expect(readLine!.length).toBeLessThan(120)
+  })
+
+  test("НЕГАТИВНЫЙ: очень длинный code всё равно обрезается — WIDE_ARG_CHARS не безлимитен", () => {
+    const hugeCode = "x".repeat(1000)
+    const text = renderTailDigest([
+      {
+        info: assistantInfo("a1", "u1"),
+        parts: [completedTool("a1", "p1", "exec", { code: hugeCode }, "OK")],
+      },
+    ])
+    expect(text).toContain("…")
+    expect(text).not.toContain("x".repeat(500))
+  })
+
   test("skips prior checkpoint/compaction boundaries so a second rebuild cannot echo itself", () => {
     const text = renderTailDigest([
       boundaryUser("m-cp", "a1", ['- read(path="old.ts")']),
