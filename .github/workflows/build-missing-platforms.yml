@@ -21,6 +21,10 @@ name: Build Missing Platforms (hosted, для pi-scaffold)
 on:
   workflow_dispatch:
     inputs:
+      ref:
+        description: 'Git-ref (тег/ветка/sha) ЭТОГО репозитория, из которого собирать — обычно тег UPSTREAM_PIN. Не путать с тем, каким ref задиспатчен сам воркфлоу: workflow_dispatch по API требует ref, где ФАЙЛ воркфлоу уже существует (main), а собирать при этом нужно ровно закреплённый тег.'
+        required: true
+        type: string
       kernel_version:
         description: 'Версия ядра для package.json (обычно KERNEL_VERSION из pi-scaffold)'
         required: true
@@ -80,6 +84,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - name: Verify critical Scaffold patches (PI-80/PI-129)
         # Тот же скрипт, что и в build-kernel.yml, вендорен сюда (владелец 08.09.2026):
         # запускается против КОРНЯ ЭТОГО репозитория напрямую — checkout уже дал нам
@@ -99,6 +105,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set KERNEL_VERSION in package.json
         run: |
