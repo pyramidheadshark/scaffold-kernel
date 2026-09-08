@@ -9,6 +9,7 @@ import { isMemoryWriteEnabled } from "@/memory/write-gate"
 import { MemoryFtsTable } from "@/memory/fts.sql"
 import { TaskRegistry } from "@/task/registry"
 import { ActorRegistry } from "@/actor/registry"
+import { SYSTEM_SPAWNED_AGENT_TYPES } from "@/agent/config"
 import type { AgentOutcome, FailureInfo, ForkContext } from "@/actor/spawn"
 import { spawnRef } from "@/actor/spawn-ref"
 import { prefixCaptureRef } from "./prefix-capture-ref"
@@ -698,7 +699,24 @@ export const layer: Layer.Layer<
       // writer-as-subagent migration this becomes mostly impossible, but the
       // guard stays so future paths that fold a system-spawn actor into the
       // main loop don't accidentally re-enter the writer.
-      if (yield* actorRegistry.isSystemSpawned(input.sessionID, "main")) {
+      //
+      // ⚠ Found 2026-09-08 by adversarial review: `isSystemSpawned(input.sessionID, "main")`
+      // was a tautology — `ActorRegistry.isSystemSpawned`'s first line is
+      // `if (actorID === "main") return false`, so this call could NEVER return true
+      // regardless of what was actually registered for the session. The existing test
+      // (`bootstrap-skip-system.test.ts`) only proved the CONSUMER reacts correctly to
+      // `true` via a stub that ignores its arguments — it never exercised the real
+      // registry method, so the dead check shipped unnoticed. Not currently exploitable
+      // (the writer's own tool grant already excludes spawn capability, and
+      // `isBoundedComputationAgent` blocks the overflow path earlier), but a silent
+      // no-op backstop is worse than an honest absence of one for any future refactor
+      // that relies on it. Fixed by asking what THIS session actually is, instead of
+      // hardcoding "main": a writer's own session has exactly one registered actor row
+      // (registered by `spawnSubagent`, keyed by an allocated actorID — never "main"),
+      // so listing actors for the session and checking their agent type is the real
+      // equivalent of "is this session driven by a system-spawned agent".
+      const sessionActors = yield* actorRegistry.listBySession(input.sessionID)
+      if (sessionActors.some((a) => SYSTEM_SPAWNED_AGENT_TYPES.has(a.agent))) {
         log.info("tryStartCheckpointWriter skipping system-spawned session")
         return "skipped" as const
       }
