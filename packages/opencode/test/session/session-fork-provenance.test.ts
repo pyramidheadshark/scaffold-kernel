@@ -108,12 +108,16 @@ describe("Session.fork переносит last_checkpoint_message_id", () => {
 
       // Отмечаем ВТОРОЕ сообщение (индекс 1) как последний чекпоинт источника — той же
       // прямой записью в БД, что использует сам writer (checkpoint.ts:1090).
-      await Database.use((db) =>
-        db.update(SessionTable).set({ last_checkpoint_message_id: ids[1] }).where(eq(SessionTable.id, origin.id)).run(),
+      Database.use((db) =>
+        db
+          .update(SessionTable)
+          .set({ last_checkpoint_message_id: ids[1] as never })
+          .where(eq(SessionTable.id, origin.id))
+          .run(),
       )
 
       const forked = await rt.runPromise(Session.Service.use((svc) => svc.fork({ sessionID: origin.id })))
-      const rerow = await Database.use((db) =>
+      const rerow = Database.use((db) =>
         db.select({ last: SessionTable.last_checkpoint_message_id }).from(SessionTable).where(eq(SessionTable.id, forked.id)).get(),
       )
 
@@ -129,7 +133,7 @@ describe("Session.fork переносит last_checkpoint_message_id", () => {
     await withServices(tmp.path, async (rt) => {
       const origin = await rt.runPromise(Session.Service.use((svc) => svc.create()))
       const forked = await rt.runPromise(Session.Service.use((svc) => svc.fork({ sessionID: origin.id })))
-      const rerow = await Database.use((db) =>
+      const rerow = Database.use((db) =>
         db.select({ last: SessionTable.last_checkpoint_message_id }).from(SessionTable).where(eq(SessionTable.id, forked.id)).get(),
       )
       expect(rerow?.last).toBeFalsy()
