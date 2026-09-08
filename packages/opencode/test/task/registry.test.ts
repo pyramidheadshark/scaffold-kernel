@@ -169,3 +169,87 @@ describe("TaskRegistry.list", () => {
     ),
   )
 })
+
+// Session.fork копирует message/part через idMap, но НЕ доску задач — форкнутая сессия
+// видела "Task T1 not found" на любую ссылку из старого Mission Brief. copySession
+// переносит задачи и события КАК ЕСТЬ (тот же ID, тот же статус) в новую сессию.
+describe("TaskRegistry.copySession", () => {
+  it.live("переносит задачу с исходным ID в целевую сессию", () =>
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const reg = yield* TaskRegistry.Service
+        const source = yield* seedSession()
+        const target = yield* seedSession()
+        yield* reg.create({ session_id: source.id, summary: "Разобраться с багом" })
+
+        const copied = yield* reg.copySession({ source_session_id: source.id, target_session_id: target.id })
+        expect(copied).toBe(1)
+
+        const task = yield* reg.get({ session_id: target.id, id: "T1" })
+        expect(task).toBeDefined()
+        expect(task?.summary).toBe("Разобраться с багом")
+        expect(task?.status).toBe("open")
+
+        // Источник остаётся нетронутым — это копия, не перенос.
+        const stillInSource = yield* reg.get({ session_id: source.id, id: "T1" })
+        expect(stillInSource).toBeDefined()
+      }),
+    ),
+  )
+
+  it.live("переносит вложенные задачи и историю событий", () =>
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const reg = yield* TaskRegistry.Service
+        const source = yield* seedSession()
+        const target = yield* seedSession()
+        const parent = yield* reg.create({ session_id: source.id, summary: "Родительская" })
+        yield* reg.create({ session_id: source.id, summary: "Дочерняя", parent_id: parent.id })
+        yield* reg.start({ session_id: source.id, id: parent.id, owner: "build" })
+
+        yield* reg.copySession({ source_session_id: source.id, target_session_id: target.id })
+
+        const child = yield* reg.get({ session_id: target.id, id: "T1.1" })
+        expect(child).toBeDefined()
+        expect(child?.parent_task_id).toBe("T1")
+
+        const events = yield* reg.events({ session_id: target.id, task_id: parent.id })
+        // "created" + "started" — обе записи истории должны были переехать.
+        expect(events.length).toBe(2)
+      }),
+    ),
+  )
+
+  it.live("НЕГАТИВНЫЙ: закрытая задача не переоткрывается копией", () =>
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const reg = yield* TaskRegistry.Service
+        const source = yield* seedSession()
+        const target = yield* seedSession()
+        const t1 = yield* reg.create({ session_id: source.id, summary: "Уже сделано" })
+        yield* reg.done({ session_id: source.id, id: t1.id })
+
+        yield* reg.copySession({ source_session_id: source.id, target_session_id: target.id })
+
+        const copied = yield* reg.get({ session_id: target.id, id: t1.id })
+        expect(copied?.status).toBe("done")
+      }),
+    ),
+  )
+
+  it.live("НЕГАТИВНЫЙ: источник без задач не выдумывает несуществующие", () =>
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const reg = yield* TaskRegistry.Service
+        const source = yield* seedSession()
+        const target = yield* seedSession()
+
+        const copied = yield* reg.copySession({ source_session_id: source.id, target_session_id: target.id })
+        expect(copied).toBe(0)
+
+        const list = yield* reg.list({ session_id: target.id, include_terminal: true })
+        expect(list.length).toBe(0)
+      }),
+    ),
+  )
+})

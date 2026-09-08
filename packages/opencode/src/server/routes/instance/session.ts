@@ -489,7 +489,13 @@ export const SessionRoutes = lazy(() =>
           const sessionID = c.req.valid("param").sessionID
           const body = c.req.valid("json")
           const svc = yield* Session.Service
-          return yield* svc.fork({ ...body, sessionID })
+          const forked = yield* svc.fork({ ...body, sessionID })
+          // Session.fork копирует message/part через idMap, но НЕ доску задач — без
+          // переноса форкнутая сессия видит "Task T1 not found" на любой ссылке из
+          // старого Mission Brief. См. TaskRegistry.copySession.
+          const taskRegistry = yield* TaskRegistry.Service
+          yield* taskRegistry.copySession({ source_session_id: sessionID, target_session_id: forked.id })
+          return forked
         }),
     )
     .post(
