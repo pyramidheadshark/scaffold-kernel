@@ -1,0 +1,205 @@
+name: Build Missing Client Artifact (hosted, для витрины pyramidheadshark/scaffold)
+
+# Точечная сборка клиентского артефакта (bin + bundle, scripts/build-artifact.ts) для
+# платформ, которых нет в текущем релизе витрины pyramidheadshark/scaffold (linux-x64
+# собирается и публикуется из pi-scaffold напрямую на self-hosted раннере). Этот
+# воркфлоу живёт в ПУБЛИЧНОМ scaffold-kernel ровно по той же причине, что и
+# build-missing-platforms.yml для бинаря ядра: хостед-раннеры здесь бесплатны, а у
+# приватного pi-scaffold платные Actions-минуты кончились (09.09.2026).
+#
+# Источник — ПРИВАТНЫЙ pi-scaffold (клиентский враппер и bundle — не ядро), поэтому
+# checkout идёт с явным PAT (PI_SCAFFOLD_READONLY_PAT, read-only на pi-scaffold), а не
+# с checkout@v4 без repository: (тот паттерн предполагает checkout ТЕКУЩЕГО репо, здесь
+# нужен ЧУЖОЙ приватный репозиторий).
+#
+# Публикация — в pyramidheadshark/scaffold (публичная витрина), НЕ в scaffold-kernel и
+# НЕ в pi-scaffold. GITHUB_TOKEN этого воркфлоу скоупится только на scaffold-kernel и
+# не может писать релизы в другой репозиторий даже одного владельца — нужен отдельный
+# PAT с contents:write на pyramidheadshark/scaffold (SCAFFOLD_DIST_PUSH_TOKEN).
+#
+# Синхронизировать при изменении scripts/build-artifact.ts/artifact-oracle.sh в
+# pi-scaffold: этот воркфлоу их просто вызывает, копий кода здесь нет.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pi_scaffold_ref:
+        description: 'Git-ref pi-scaffold, из которого собирать (обычно тег версии CLI или main)'
+        required: true
+        type: string
+      release_tag:
+        description: 'Тег релиза в pyramidheadshark/scaffold, куда добавить ассеты (должен уже существовать)'
+        required: true
+        type: string
+      platforms:
+        description: 'Платформы через запятую из {linux-arm64, darwin-arm64, windows-x64}'
+        required: false
+        default: 'linux-arm64,darwin-arm64,windows-x64'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-matrix:
+    name: Resolve requested platforms
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Build matrix JSON from requested platforms
+        id: matrix
+        run: |
+          set -euo pipefail
+          declare -A RUNNER=(
+            [linux-arm64]='["ubuntu-24.04-arm"]'
+            [darwin-arm64]='["macos-latest"]'
+            [windows-x64]='["windows-latest"]'
+          )
+          IFS=',' read -ra WANTED <<< "${{ inputs.platforms }}"
+          ENTRIES=()
+          for p in "${WANTED[@]}"; do
+            p="$(echo "$p" | xargs)"
+            [[ -z "$p" ]] && continue
+            if [[ -z "${RUNNER[$p]:-}" ]]; then
+              echo "::error::неизвестная платформа: '$p' (доступны: linux-arm64, darwin-arm64, windows-x64 — linux-x64 остаётся на self-hosted pi-scaffold)"
+              exit 1
+            fi
+            ENTRIES+=("{\"target\":\"$p\",\"runner\":${RUNNER[$p]}}")
+          done
+          if [[ ${#ENTRIES[@]} -eq 0 ]]; then
+            echo "::error::пустой список платформ"
+            exit 1
+          fi
+          JSON="{\"include\":[$(IFS=,; echo "${ENTRIES[*]}")]}"
+          echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
+          echo "Matrix: $JSON"
+
+  build:
+    name: Build client artifact ${{ matrix.target }}
+    needs: resolve-matrix
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve-matrix.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # ⚠ Checkout ЧУЖОГО приватного репозитория — не текущего. token: явный PAT,
+      # read-only на pi-scaffold; без него checkout приватного репо с чужим owner'ом
+      # даёт 404, а не понятную ошибку доступа.
+      - name: Checkout pi-scaffold (private source, via PAT)
+        uses: actions/checkout@v4
+        with:
+          repository: pyramidheadshark/pi-scaffold
+          ref: ${{ inputs.pi_scaffold_ref }}
+          token: ${{ secrets.PI_SCAFFOLD_READONLY_PAT }}
+          path: pi-scaffold
+
+      - name: Resolve bun version pinned by pi-scaffold's own package.json
+        id: bun-pin
+        working-directory: pi-scaffold
+        run: |
+          PIN=$(node -e "
+            const fs = require('fs');
+            try {
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              const pm = pkg.packageManager || '';
+              const m = pm.match(/^bun@(.+)$/);
+              console.log(m ? m[1] : 'latest');
+            } catch { console.log('latest'); }
+          ")
+          echo "version=$PIN" >> "$GITHUB_OUTPUT"
+          echo "Resolved bun-version: $PIN"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun-pin.outputs.version }}
+
+      - name: Install dependencies
+        working-directory: pi-scaffold
+        run: bun install
+
+      # Сборка НАТИВНАЯ на раннере целевой платформы (тот же приём, что у ядра) —
+      # кросс-компиляция bun build --compile не проверена в проде, поэтому --target
+      # намеренно не передаётся: собираем "для хоста", а хост уже соответствует
+      # matrix.target благодаря выбору раннера в resolve-matrix.
+      - name: Build client artifact
+        working-directory: pi-scaffold
+        run: bun scripts/build-artifact.ts --out dist/artifact
+
+      - name: Verify binary runs without bun/node in PATH (Unix)
+        if: matrix.target != 'windows-x64'
+        working-directory: pi-scaffold
+        run: |
+          cd dist/artifact
+          PATH=/usr/bin:/bin ./scaffold --version
+
+      - name: Verify binary runs (Windows)
+        if: matrix.target == 'windows-x64'
+        working-directory: pi-scaffold
+        shell: pwsh
+        run: |
+          cd dist/artifact
+          ./scaffold.exe --version
+
+      # Полный оракул (9 проверок, включая негативы) — только там, где есть настоящий
+      # bash-стенд (Unix). На Windows GitHub-раннер несёт Git Bash, но оракул зовёт
+      # `PATH=/usr/bin:/bin` — POSIX-специфично, не переносится дословно; ограничиваемся
+      # прямой проверкой версии/doctor выше, полный оракул остаётся Unix-путём.
+      - name: Full artifact oracle (Unix only)
+        if: matrix.target != 'windows-x64'
+        working-directory: pi-scaffold
+        run: bash scripts/artifact-oracle.sh dist/artifact-oracle-check
+
+      - name: Package archive (Unix)
+        if: matrix.target != 'windows-x64'
+        working-directory: pi-scaffold/dist/artifact
+        run: tar -czf "../scaffold-${{ matrix.target }}.tar.gz" .
+
+      - name: Package archive (Windows)
+        if: matrix.target == 'windows-x64'
+        working-directory: pi-scaffold/dist/artifact
+        shell: pwsh
+        run: Compress-Archive -Path * -DestinationPath ../scaffold-windows-x64.zip
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: scaffold-client-${{ matrix.target }}
+          path: |
+            pi-scaffold/dist/scaffold-*.tar.gz
+            pi-scaffold/dist/scaffold-*.zip
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: Publish assets to pyramidheadshark/scaffold
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all built archives
+        uses: actions/download-artifact@v6
+        with:
+          pattern: scaffold-client-*
+          path: archives
+          merge-multiple: true
+
+      - name: List downloaded archives
+        run: ls -la archives/
+
+      # ⚠ Публикация — ОТДЕЛЬНЫЙ репозиторий (pyramidheadshark/scaffold), не текущий.
+      # GITHUB_TOKEN этого воркфлоу скоупится только на scaffold-kernel — нужен
+      # отдельный PAT с contents:write на pyramidheadshark/scaffold.
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.SCAFFOLD_DIST_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          for f in archives/*; do
+            echo "Uploading: $f"
+            gh release upload "${{ inputs.release_tag }}" "$f" \
+              --repo pyramidheadshark/scaffold --clobber
+          done
+          echo "✓ Ассеты добавлены в релиз ${{ inputs.release_tag }} pyramidheadshark/scaffold"
