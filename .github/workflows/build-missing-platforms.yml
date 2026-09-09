@@ -202,9 +202,14 @@ jobs:
       # прогон 09.09.2026 подтвердил: 3 секунды, пустой runner_name, 0 шагов). Здесь,
       # в публичном scaffold-kernel, минуты бесплатны и раннер уже выдан — тестируем
       # бинарь тут же, пока он ещё свежесобран.
+      # ⚠ Здесь НАМЕРЕННО `bun add`, а не `npm install` (как в оригинале pi-scaffold) —
+      # scaffold-kernel это bun workspace с `catalog:`-протоколом версий (package.json,
+      # корень), который npm не понимает (`EUNSUPPORTEDPROTOCOL`); живой прогон 09.09.2026
+      # подтвердил падение с npm. При синхронизации с pi-scaffold ЭТУ строку не копировать
+      # дословно.
       - name: Install node-pty for ConPTY smoke (windows-x64 only)
         if: matrix.target == 'windows-x64'
-        run: npm install @homebridge/node-pty-prebuilt-multiarch@0.11.14
+        run: bun add @homebridge/node-pty-prebuilt-multiarch@0.11.14
 
       - name: 'Smoke — ConPTY TUI rendering (windows-x64 only)'
         if: matrix.target == 'windows-x64'
