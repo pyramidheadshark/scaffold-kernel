@@ -158,6 +158,38 @@ export const Data = lazy(async () => {
   })
 })
 
+// Provider ids never offered as a login/subscription option by this
+// distribution (upstream models.dev ships them regardless of source —
+// bundled snapshot, cache file, or live fetch). Applied by callers that build
+// a user-facing "pick a provider to add" list (the TUI provider dialog, `mimo
+// auth login`'s provider picker) via filterHiddenProviders below.
+//
+// Deliberately NOT applied inside get() itself: get() also backs the shared
+// Provider.Service state used to resolve an already-configured/authenticated
+// model (defaultModel, getLanguage, ...). Filtering there would delete a
+// provider's catalog data out from under a provider entry a plugin's config()
+// hook still injects into cfg.provider (e.g. the built-in Xiaomi plugin
+// registers `provider.xiaomi` unconditionally so it shows up before login),
+// turning it into an empty, silently-dropped provider and breaking default
+// model resolution for unrelated users/providers. That coupling is a
+// pre-existing, separate concern from "don't advertise this in pickers" and
+// is out of scope for this change.
+function isHiddenProvider(id: string) {
+  const lower = id.toLowerCase()
+  if (lower.startsWith("xiaomi")) return !Flag.MIMOCODE_ENABLE_XIAOMI_PROVIDERS
+  if (lower === "opencode" || lower === "opencode-go") return !Flag.MIMOCODE_ENABLE_OPENCODE_SUBSCRIPTIONS
+  return false
+}
+
+export function filterHiddenProviders(data: Record<string, Provider>): Record<string, Provider> {
+  const result: Record<string, Provider> = {}
+  for (const [id, provider] of Object.entries(data)) {
+    if (isHiddenProvider(id)) continue
+    result[id] = provider
+  }
+  return result
+}
+
 export async function get() {
   const result = await Data()
   return result as Record<string, Provider>

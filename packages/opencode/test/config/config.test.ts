@@ -414,14 +414,13 @@ test("handles environment variable substitution", async () => {
   }
 })
 
-test("preserves env variables when adding $schema to config", async () => {
+test("does not inject a $schema into config lacking one (no schema-hosting domain of our own)", async () => {
   const originalEnv = process.env["PRESERVE_VAR"]
   process.env["PRESERVE_VAR"] = "secret_value"
 
   try {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        // Config without $schema - should trigger auto-add
         await Filesystem.write(
           path.join(dir, "mimocode.json"),
           JSON.stringify({
@@ -436,11 +435,12 @@ test("preserves env variables when adding $schema to config", async () => {
         const config = await load()
         expect(config.username).toBe("secret_value")
 
-        // Read the file to verify the env variable was preserved
+        // Read the file to verify the env variable was preserved and the
+        // file was left otherwise untouched (no $schema write-back).
         const content = await Filesystem.readText(path.join(tmp.path, "mimocode.json"))
         expect(content).toContain("{env:PRESERVE_VAR}")
         expect(content).not.toContain("secret_value")
-        expect(content).toContain("$schema")
+        expect(content).not.toContain("$schema")
       },
     })
   } finally {
@@ -452,7 +452,7 @@ test("preserves env variables when adding $schema to config", async () => {
   }
 })
 
-test("migrates old opencode.ai $schema URL to mimo.xiaomi.com", async () => {
+test("does not migrate a legacy opencode.ai $schema URL (no rewrite happens at all)", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Filesystem.write(
@@ -466,8 +466,8 @@ test("migrates old opencode.ai $schema URL to mimo.xiaomi.com", async () => {
     fn: async () => {
       await load()
       const content = await Filesystem.readText(path.join(tmp.path, "mimocode.json"))
-      expect(content).toContain('"$schema": "https://mimo.xiaomi.com/mimocode/config.json"')
-      expect(content).not.toContain("opencode.ai")
+      expect(content).toContain('"$schema": "https://opencode.ai/config.json"')
+      expect(content).not.toContain("mimo.xiaomi.com")
       expect(content).toContain('"model": "test/model"')
     },
   })
@@ -493,7 +493,7 @@ test("does not modify custom $schema URL", async () => {
   })
 })
 
-test("preserves JSONC comments when injecting $schema", async () => {
+test("does not inject $schema into JSONC config either, and preserves comments", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Filesystem.write(
@@ -510,7 +510,7 @@ test("preserves JSONC comments when injecting $schema", async () => {
     fn: async () => {
       await load()
       const content = await Filesystem.readText(path.join(tmp.path, "mimocode.jsonc"))
-      expect(content).toContain("$schema")
+      expect(content).not.toContain("$schema")
       expect(content).toContain("// My config")
       expect(content).toContain('"model": "test/model"')
     },

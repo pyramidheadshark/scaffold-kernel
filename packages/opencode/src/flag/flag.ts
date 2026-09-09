@@ -135,6 +135,21 @@ export const Flag = {
   MIMOCODE_DISABLE_DEFAULT_PLUGINS: truthy("MIMOCODE_DISABLE_DEFAULT_PLUGINS"),
   MIMOCODE_DISABLE_LSP_DOWNLOAD: truthy("MIMOCODE_DISABLE_LSP_DOWNLOAD"),
   MIMOCODE_ENABLE_EXPERIMENTAL_MODELS: truthy("MIMOCODE_ENABLE_EXPERIMENTAL_MODELS"),
+  // Defaults to false. The upstream models.dev catalog carries Xiaomi/MiMo
+  // provider entries ("xiaomi", "xiaomi-token-plan-*") that this distribution
+  // never offers as a login/subscription option. Set
+  // MIMOCODE_ENABLE_XIAOMI_PROVIDERS=true to restore them in the catalog.
+  // Read lazily so tests can toggle it at runtime.
+  get MIMOCODE_ENABLE_XIAOMI_PROVIDERS() {
+    return truthy("MIMOCODE_ENABLE_XIAOMI_PROVIDERS")
+  },
+  // Defaults to false. Same catalog carries the upstream "opencode" (Zen) and
+  // "opencode-go" subscription providers, which this distribution also never
+  // offers. Set MIMOCODE_ENABLE_OPENCODE_SUBSCRIPTIONS=true to restore them.
+  // Read lazily so tests can toggle it at runtime.
+  get MIMOCODE_ENABLE_OPENCODE_SUBSCRIPTIONS() {
+    return truthy("MIMOCODE_ENABLE_OPENCODE_SUBSCRIPTIONS")
+  },
   // Defaults to false. When enabled, checkpoint writers, checkpoint-based
   // context rebuilds, and checkpoint copy in the system prompt and tool
   // schemas are disabled; context overflow falls back to compaction.

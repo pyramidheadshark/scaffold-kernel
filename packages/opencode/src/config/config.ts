@@ -617,17 +617,12 @@ export const layer = Layer.effect(
       if (!("path" in options)) return data
 
       yield* Effect.promise(() => resolveLoadedPlugins(data, options.path))
-      if (!data.$schema || data.$schema === "https://opencode.ai/config.json") {
-        data.$schema = "https://mimo.xiaomi.com/mimocode/config.json"
-        const edits = modify(text, ["$schema"], "https://mimo.xiaomi.com/mimocode/config.json", {
-          formattingOptions: { insertSpaces: true, tabSize: 2 },
-          isArrayInsertion: false,
-        })
-        if (edits.length) {
-          const updated = applyEdits(text, edits)
-          yield* fs.writeFileString(options.path, updated).pipe(Effect.catch(() => Effect.void))
-        }
-      }
+      // Intentionally no auto-injection/migration of a $schema URL here: this
+      // distribution has no schema-hosting domain of its own, and silently
+      // rewriting the user's config file to point at a Xiaomi-owned URL is
+      // not something to do by default. See config.test.ts for the covered
+      // behavior (existing $schema values, including a legacy opencode.ai
+      // one, are left untouched).
       return data
     })
 
@@ -653,7 +648,6 @@ export const layer = Layer.effect(
             .then(async (mod) => {
               const { provider, model, ...rest } = mod.default
               if (provider && model) result.model = `${provider}/${model}`
-              result["$schema"] = "https://mimo.xiaomi.com/mimocode/config.json"
               result = mergeDeep(result, rest)
               await fsNode.writeFile(path.join(Global.Path.config, "config.json"), JSON.stringify(result, null, 2))
               await fsNode.unlink(legacy)
@@ -669,7 +663,7 @@ export const layer = Layer.effect(
         !existsSync(path.join(Global.Path.config, "mimocode.json")) &&
         !existsSync(globalConfigFile)
       ) {
-        const starter = '{\n  "$schema": "https://mimo.xiaomi.com/mimocode/config.json"\n}\n'
+        const starter = "{}\n"
         yield* fs.writeFileString(globalConfigFile, starter).pipe(Effect.catch(() => Effect.void))
       }
 
@@ -814,7 +808,6 @@ export const layer = Layer.effect(
             }
             const wellknown = (yield* Effect.promise(() => response.json())) as { config?: Record<string, unknown> }
             const remoteConfig = wellknown.config ?? {}
-            if (!remoteConfig.$schema) remoteConfig.$schema = "https://mimo.xiaomi.com/mimocode/config.json"
             const source = `${url}/.well-known/opencode`
             const next = yield* loadConfig(JSON.stringify(remoteConfig), {
               dir: path.dirname(source),

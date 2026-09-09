@@ -43,7 +43,6 @@ import { Global } from "@/global"
 import { Filesystem } from "@/util"
 import { useTuiConfig } from "./tui-config"
 import { isRecord } from "@/util/record"
-import { applyEdits, modify } from "jsonc-parser"
 import type { TuiThemeCurrent } from "@mimo-ai/plugin/tui"
 
 type Theme = TuiThemeCurrent & {
@@ -535,8 +534,6 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
   },
 })
 
-const THEME_SCHEMA_URL = "https://mimo.xiaomi.com/mimocode/theme.json"
-
 async function getCustomThemes() {
   const directories = [
     Global.Path.config,
@@ -561,14 +558,10 @@ async function getCustomThemes() {
       if (!text) continue
       let data: ThemeJson
       try { data = JSON.parse(text) } catch { continue }
-      if (!data.$schema || data.$schema === "https://opencode.ai/theme.json") {
-        data.$schema = THEME_SCHEMA_URL
-        const edits = modify(text, ["$schema"], THEME_SCHEMA_URL, {
-          formattingOptions: { insertSpaces: true, tabSize: 2 },
-          isArrayInsertion: false,
-        })
-        if (edits.length) await Filesystem.write(item, applyEdits(text, edits)).catch(() => {})
-      }
+      // No auto-injection/migration of a $schema URL: see config.ts for the
+      // rationale (no schema-hosting domain of our own, so a user's custom
+      // theme file — including one with a legacy opencode.ai schema — is
+      // left exactly as they wrote it).
       result[name] = data
     }
   }

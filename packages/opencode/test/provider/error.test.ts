@@ -199,6 +199,19 @@ describe("provider stream error", () => {
     })
   })
 
+  test("401 gateway/proxy HTML block page stays brand-neutral (no hardcoded foreign CLI command)", () => {
+    const parsed = parseAPICallError({
+      providerID: openai,
+      error: apiError({
+        message: "Unauthorized",
+        statusCode: 401,
+        responseBody: "<!doctype html><html><body>blocked</body></html>",
+      }),
+    })
+    expect(parsed.message).not.toMatch(/opencode|mimo/i)
+    expect(parsed.message).toContain("Unauthorized")
+  })
+
   test("marks OpenAI server_error events as retryable", () => {
     const input = {
       type: "error",

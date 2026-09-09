@@ -38,7 +38,7 @@ export const ProviderRoutes = lazy(() =>
           const auth = yield* Auth.Service
           const cfg = yield* Config.Service
           const config = yield* cfg.get()
-          const all = yield* Effect.promise(() => ModelsDev.get())
+          const all = ModelsDev.filterHiddenProviders(yield* Effect.promise(() => ModelsDev.get()))
           const disabled = new Set(config.disabled_providers ?? [])
           const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
           const filtered: Record<string, (typeof all)[string]> = {}
