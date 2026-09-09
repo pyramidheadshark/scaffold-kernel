@@ -386,7 +386,7 @@ export const ProvidersLoginCommand = cmd({
 
         const providers = await ModelsDev.get().then((x) => {
           const filtered: Record<string, (typeof x)[string]> = {}
-          for (const [key, value] of Object.entries(x)) {
+          for (const [key, value] of Object.entries(ModelsDev.filterHiddenProviders(x))) {
             if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) {
               filtered[key] = value
             }
@@ -579,6 +579,10 @@ export const ProvidersLogoutCommand = cmd({
   },
 })
 
+// Kept brand-neutral on purpose: distributions of this fork ship under
+// different CLI names, so the message must not hardcode any one of them.
+export const NOT_LOGGED_IN_MESSAGE = "Not logged in. Run `auth login` to log in."
+
 export const ProvidersWhoamiCommand = cmd({
   command: "whoami",
   describe: "show current logged-in user info",
@@ -592,7 +596,7 @@ export const ProvidersWhoamiCommand = cmd({
       }),
     )
     if (!info) {
-      prompts.log.error("Not logged in. Run `mimo auth login` to log in.")
+      prompts.log.error(NOT_LOGGED_IN_MESSAGE)
       return
     }
     if (info.type === "api" && info.metadata) {

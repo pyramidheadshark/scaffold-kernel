@@ -2,7 +2,6 @@ export * as TuiConfig from "./tui"
 
 import z from "zod"
 import { mergeDeep, unique } from "remeda"
-import { applyEdits, modify } from "jsonc-parser"
 import { Context, Effect, Fiber, Layer } from "effect"
 import { ConfigParse } from "@/config/parse"
 import * as ConfigPaths from "@/config/paths"
@@ -193,25 +192,17 @@ export async function get() {
   return runPromise((svc) => svc.get())
 }
 
-const TUI_SCHEMA_URL = "https://mimo.xiaomi.com/mimocode/tui.json"
-
 async function loadFile(filepath: string): Promise<Info> {
   const text = await ConfigPaths.readFile(filepath)
   if (!text) return {}
-  let parsed = false
-  const data = await load(text, filepath).then((d) => { parsed = true; return d }).catch((error) => {
+  // No auto-injection/migration of a $schema URL: see config.ts for the
+  // rationale (no schema-hosting domain of our own to point at, so we leave
+  // whatever the user already has — including a legacy opencode.ai one —
+  // untouched instead of rewriting it to a Xiaomi-owned URL).
+  return await load(text, filepath).catch((error) => {
     log.warn("failed to load tui config", { path: filepath, error })
     return {} as Info
   })
-  if (parsed && (!data.$schema || data.$schema === "https://opencode.ai/tui.json")) {
-    data.$schema = TUI_SCHEMA_URL
-    const edits = modify(text, ["$schema"], TUI_SCHEMA_URL, {
-      formattingOptions: { insertSpaces: true, tabSize: 2 },
-      isArrayInsertion: false,
-    })
-    if (edits.length) await Filesystem.write(filepath, applyEdits(text, edits)).catch(() => {})
-  }
-  return data
 }
 
 async function load(text: string, configFilepath: string): Promise<Info> {

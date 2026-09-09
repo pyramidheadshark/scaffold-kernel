@@ -1,5 +1,4 @@
 {
-  "$schema": "https://mimo.xiaomi.com/mimocode/theme.json",
   "defs": {
     "background100": "#0A0A0A",
     "background200": "#000000",

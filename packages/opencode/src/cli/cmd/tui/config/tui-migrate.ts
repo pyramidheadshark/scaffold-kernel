@@ -10,8 +10,6 @@ import * as ConfigPaths from "@/config/paths"
 
 const log = Log.create({ service: "tui.migrate" })
 
-const TUI_SCHEMA_URL = "https://mimo.xiaomi.com/mimocode/tui.json"
-
 const LegacyTheme = TuiInfo.shape.theme.optional()
 const LegacyRecord = z.record(z.string(), z.unknown()).optional()
 
@@ -60,9 +58,9 @@ export async function migrateTuiConfig(input: MigrateInput) {
     const targetExists = await Filesystem.exists(target)
     if (targetExists) continue
 
-    const payload: Record<string, unknown> = {
-      $schema: TUI_SCHEMA_URL,
-    }
+    // No $schema field here: this distribution has no schema-hosting domain
+    // of its own to point a freshly-migrated tui.json at (see config.ts).
+    const payload: Record<string, unknown> = {}
     if (extracted.theme !== undefined) payload.theme = extracted.theme
     if (extracted.keybinds !== undefined) payload.keybinds = extracted.keybinds
     if (tui) Object.assign(payload, tui)

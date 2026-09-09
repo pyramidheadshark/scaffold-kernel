@@ -626,7 +626,7 @@ test("merges plugin_enabled flags across config layers", async () => {
   })
 })
 
-test("injects $schema when missing from tui.json", async () => {
+test("does not inject a $schema into tui.json lacking one (no schema-hosting domain of our own)", async () => {
   await using tmp = await tmpdir({ outsideGit: true,
     init: async (dir) => {
       await Bun.write(path.join(dir, "tui.json"), JSON.stringify({ theme: "nord" }, null, 2))
@@ -635,11 +635,11 @@ test("injects $schema when missing from tui.json", async () => {
 
   await getTuiConfig(tmp.path)
   const text = await Filesystem.readText(path.join(tmp.path, "tui.json"))
-  expect(text).toContain('"$schema": "https://mimo.xiaomi.com/mimocode/tui.json"')
+  expect(text).not.toContain("$schema")
   expect(text).toContain('"theme": "nord"')
 })
 
-test("migrates old opencode.ai $schema URL to mimo.xiaomi.com", async () => {
+test("does not migrate a legacy opencode.ai $schema URL in tui.json (no rewrite happens at all)", async () => {
   await using tmp = await tmpdir({ outsideGit: true,
     init: async (dir) => {
       await Bun.write(
@@ -651,8 +651,8 @@ test("migrates old opencode.ai $schema URL to mimo.xiaomi.com", async () => {
 
   await getTuiConfig(tmp.path)
   const text = await Filesystem.readText(path.join(tmp.path, "tui.json"))
-  expect(text).toContain('"$schema": "https://mimo.xiaomi.com/mimocode/tui.json"')
-  expect(text).not.toContain("opencode.ai")
+  expect(text).toContain('"$schema": "https://opencode.ai/tui.json"')
+  expect(text).not.toContain("mimo.xiaomi.com")
   expect(text).toContain('"theme": "dracula"')
 })
 
@@ -672,7 +672,7 @@ test("does not modify $schema when pointing to a custom URL", async () => {
   expect(text).not.toContain("mimo.xiaomi.com")
 })
 
-test("preserves JSONC comments when injecting $schema", async () => {
+test("does not inject $schema into tui.jsonc either, and preserves comments", async () => {
   await using tmp = await tmpdir({ outsideGit: true,
     init: async (dir) => {
       await Bun.write(
@@ -687,7 +687,7 @@ test("preserves JSONC comments when injecting $schema", async () => {
 
   await getTuiConfig(tmp.path)
   const text = await Filesystem.readText(path.join(tmp.path, "tui.jsonc"))
-  expect(text).toContain('"$schema": "https://mimo.xiaomi.com/mimocode/tui.json"')
+  expect(text).not.toContain("$schema")
   expect(text).toContain("// My theme config")
   expect(text).toContain('"theme": "catppuccin"')
 })

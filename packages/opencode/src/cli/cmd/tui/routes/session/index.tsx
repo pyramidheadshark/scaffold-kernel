@@ -351,6 +351,9 @@ export function Session() {
     const status = evt.properties.status
     if (status.type === "idle" || status.type === "busy") return
     if (status.message !== SessionRetry.GO_UPSELL_MESSAGE) return
+    // OpenCode Go/Zen is never offered by this distribution by default — see
+    // MIMOCODE_ENABLE_OPENCODE_SUBSCRIPTIONS in provider/models.ts.
+    if (!Flag.MIMOCODE_ENABLE_OPENCODE_SUBSCRIPTIONS) return
     if (dialog.stack.length > 0) return
 
     const seen = kv.get(GO_UPSELL_LAST_SEEN_AT)
