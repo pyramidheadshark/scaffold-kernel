@@ -15,8 +15,12 @@ name: Build Missing Platforms (hosted, для pi-scaffold)
 # уже покрывает оба репозитория — кросс-репо PAT не требуется).
 #
 # Синхронизировать вручную при изменении build-джобы pi-scaffold: шаги сборки бинаря,
-# резолва bun-пина и smoke-теста должны совпадать дословно, иначе платформы разойдутся
-# по поведению между self-hosted и hosted-путями сборки.
+# резолва bun-пина и smoke-теста должны совпадать по СУТИ (что проверяется и как), но
+# НЕ ДОСЛОВНО — среда здесь другая (bun workspace vs обычный package.json), и минимум
+# два места это уже требуют: установка node-pty (`bun add`, не `npm install` — см. ниже)
+# и путь к windows-tui-smoke.mjs (тулинг живёт на main, не на пиненном inputs.ref — см.
+# отдельный checkout перед смоком). Оба расхождения найдены живыми прогонами 09.09.2026,
+# не рассуждением — при копировании строк из pi-scaffold сверяться с этими комментариями.
 
 on:
   workflow_dispatch:
@@ -211,9 +215,22 @@ jobs:
         if: matrix.target == 'windows-x64'
         run: bun add @homebridge/node-pty-prebuilt-multiarch@0.11.14
 
+      # Тот же приём, что в джобе verify-patches ("Checkout main (verifier tooling)"):
+      # windows-tui-smoke.mjs — CI-тулинг, не патченый исходник ядра, и не обязан
+      # существовать на inputs.ref, если это тег, созданный ДО того, как скрипт сюда
+      # завезли (PR #33). Живой прогон 09.09.2026 подтвердил падение
+      # MODULE_NOT_FOUND на теге scaffold-v0.1.50 (создан до PR #33). Берём тулинг
+      # всегда с main этого же репозитория, независимо от того, что собираем.
+      - name: Checkout main (smoke tooling, windows-x64 only)
+        if: matrix.target == 'windows-x64'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: ci-tools
+
       - name: 'Smoke — ConPTY TUI rendering (windows-x64 only)'
         if: matrix.target == 'windows-x64'
-        run: node scripts/fork-setup/windows-tui-smoke.mjs "dist/${{ steps.build_binary.outputs.output_name }}" windows-tui-smoke.log
+        run: node ci-tools/scripts/fork-setup/windows-tui-smoke.mjs "dist/${{ steps.build_binary.outputs.output_name }}" windows-tui-smoke.log
 
       - name: Upload ConPTY smoke log (windows-x64 only)
         if: matrix.target == 'windows-x64' && always()
