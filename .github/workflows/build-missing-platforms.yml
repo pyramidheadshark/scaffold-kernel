@@ -211,9 +211,16 @@ jobs:
       # корень), который npm не понимает (`EUNSUPPORTEDPROTOCOL`); живой прогон 09.09.2026
       # подтвердил падение с npm. При синхронизации с pi-scaffold ЭТУ строку не копировать
       # дословно.
+      #
+      # ⚠ И `--trust` здесь обязателен, не опционален: bun по умолчанию НЕ выполняет
+      # lifecycle-скрипты (postinstall) устанавливаемых пакетов ради безопасности —
+      # `node-pty-prebuilt-multiarch` качает нативный `conpty.node` именно через
+      # postinstall, и без `--trust` он не выполняется. Живой прогон 09.09.2026 (run
+      # 34298773864) подтвердил падение без флага: "Cannot find module
+      # '../build/Release/conpty.node'" в windowsPtyAgent.js при попытке смок-теста.
       - name: Install node-pty for ConPTY smoke (windows-x64 only)
         if: matrix.target == 'windows-x64'
-        run: bun add @homebridge/node-pty-prebuilt-multiarch@0.11.14
+        run: bun add --trust @homebridge/node-pty-prebuilt-multiarch@0.11.14
 
       # Тот же приём, что в джобе verify-patches ("Checkout main (verifier tooling)"):
       # windows-tui-smoke.mjs — CI-тулинг, не патченый исходник ядра, и не обязан
