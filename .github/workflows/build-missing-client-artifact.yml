@@ -177,6 +177,14 @@ jobs:
   publish:
     name: Publish assets to pyramidheadshark/scaffold
     needs: build
+    # ⚠ Без этого условия провал ОДНОЙ платформы матрицы (например darwin-arm64) молча
+    # хоронит ассеты ВСЕХ остальных, уже собранных и прошедших оракул платформ (например
+    # windows-x64) — needs: build по умолчанию требует успеха ВСЕХ элементов матрицы, и
+    # publish просто пропускается целиком. Живой прогон 09.09.2026 подтвердил: windows-x64
+    # собрался и прошёл оракул, но не попал в релиз, потому что darwin-arm64 в том же
+    # запуске упал на независимой ошибке. `!cancelled()` пропускает джобу только при
+    # явной отмене воркфлоу, а не при провале соседней платформы.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Download all built archives
@@ -197,7 +205,13 @@ jobs:
           GH_TOKEN: ${{ secrets.SCAFFOLD_DIST_PUSH_TOKEN }}
         run: |
           set -euo pipefail
-          for f in archives/*; do
+          shopt -s nullglob
+          files=(archives/*)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "::error::ни одна платформа не собралась — нечего публиковать"
+            exit 1
+          fi
+          for f in "${files[@]}"; do
             echo "Uploading: $f"
             gh release upload "${{ inputs.release_tag }}" "$f" \
               --repo pyramidheadshark/scaffold --clobber
