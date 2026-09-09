@@ -313,7 +313,15 @@ export const layer = Layer.effect(
             tool.task,
             tool.toolscript,
             ...(Flag.MIMOCODE_EXPERIMENTAL_CRON ? [tool.cron] : []),
-            ...(Flag.MIMOCODE_EXPERIMENTAL_ORCHESTRATOR ? [tool.session] : []),
+            // `session` (peer-spawn with cwd/worktree isolation) is always in the
+            // master tool list — access is restricted downstream in `available()`
+            // by agent name (orchestrator/prime only), not by this experimental
+            // flag. The flag still gates the *native* `orchestrator` agent
+            // identity in agent/agent.ts (TUI mode-cycle, agent dialog) — that
+            // stays untouched. Without this, `available()`'s name-based filter
+            // was dead code: it can only remove `session` from a list that must
+            // already contain it, and the flag gate upstream meant it never did.
+            tool.session,
             ...(Flag.MIMOCODE_EXPERIMENTAL_WORKFLOW_TOOL ? [tool.workflow] : []),
           ],
           actor: tool.actor,
