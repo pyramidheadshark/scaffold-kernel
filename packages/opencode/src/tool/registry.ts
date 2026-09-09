@@ -417,11 +417,13 @@ export const layer = Layer.effect(
         )
       }
 
-      // The `session` tool is orchestrator-only. Orchestrator is a
-      // full-capability agent (no toolAllowlist), so gate on the agent name
-      // rather than an allowlist: every other agent — primaries without an
-      // allowlist (build/plan/compose) and subagents — must not see `session`.
-      filtered = filtered.filter((tool) => tool.id !== "session" || input.agent.name === "orchestrator")
+      // The `session` tool (peer-spawn with cwd/worktree isolation) is gated to
+      // orchestrator and prime — both are full-capability agents (no
+      // toolAllowlist) that legitimately coordinate other actors. Every other
+      // agent — build/plan/compose and subagents — must not see `session`.
+      filtered = filtered.filter(
+        (tool) => tool.id !== "session" || input.agent.name === "orchestrator" || input.agent.name === "prime",
+      )
 
       // No subagent may spawn further subagents. `actor` is the only tool that
       // spawns/runs child agents, so mask it out for every `mode: "subagent"`
