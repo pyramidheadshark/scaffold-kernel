@@ -20,14 +20,25 @@
 import { spawn } from "@homebridge/node-pty-prebuilt-multiarch";
 import { writeFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
+import path from "node:path";
 
-const binPath = process.argv[2];
+const rawBinPath = process.argv[2];
 const logPath = process.argv[3] ?? "windows-tui-smoke.log";
 
-if (!binPath) {
+if (!rawBinPath) {
 	console.error("usage: windows-tui-smoke.mjs <path-to-exe> [log-path]");
 	process.exit(2);
 }
+
+// ⚠ Обязательно абсолютный путь: node-pty на Windows резолвит `file` через
+// нативный CreateProcessW внутри conpty.node, который НЕ получает `cwd` для
+// conpty-ветки (см. WindowsPtyAgent — cwd передаётся только winpty-варианту).
+// Относительный путь ("dist/scaffold-windows-x64.exe") даёт `Error: File not
+// found: ` (с пустым путём в сообщении, баг форматирования самого биндинга) —
+// живой прогон 09.09.2026 подтвердил падение на относительном пути при том,
+// что тот же путь успешно проверялся строкой раньше через bash (`"$BIN"
+// --version`), где относительные пути резолвятся штатно через шелл.
+const binPath = path.resolve(rawBinPath);
 
 const chunks = [];
 let exitInfo = null;
