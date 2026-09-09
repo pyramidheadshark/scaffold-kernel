@@ -194,6 +194,31 @@ jobs:
           fi
           echo "✓ ToolRegistry bootstrap OK"
 
+      # Смок над реальным ConPTY, вендорен из pi-scaffold (09.09.2026). Причина, почему
+      # он здесь, а не в pi-scaffold/build-kernel.yml: тот воркфлоу живёт на облачных
+      # минутах ПРИВАТНОГО pi-scaffold, а remote_platforms используется РОВНО тогда,
+      # когда этих минут не осталось — попытка смок-тестировать удалённо собранный
+      # windows-x64 обратно в pi-scaffold гарантированно не получит раннер (живой
+      # прогон 09.09.2026 подтвердил: 3 секунды, пустой runner_name, 0 шагов). Здесь,
+      # в публичном scaffold-kernel, минуты бесплатны и раннер уже выдан — тестируем
+      # бинарь тут же, пока он ещё свежесобран.
+      - name: Install node-pty for ConPTY smoke (windows-x64 only)
+        if: matrix.target == 'windows-x64'
+        run: npm install @homebridge/node-pty-prebuilt-multiarch@0.11.14
+
+      - name: 'Smoke — ConPTY TUI rendering (windows-x64 only)'
+        if: matrix.target == 'windows-x64'
+        run: node scripts/fork-setup/windows-tui-smoke.mjs "dist/${{ steps.build_binary.outputs.output_name }}" windows-tui-smoke.log
+
+      - name: Upload ConPTY smoke log (windows-x64 only)
+        if: matrix.target == 'windows-x64' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-tui-smoke-log
+          path: windows-tui-smoke.log
+          retention-days: 14
+          if-no-files-found: warn
+
       - name: Upload as workflow artifact
         uses: actions/upload-artifact@v7
         with:
