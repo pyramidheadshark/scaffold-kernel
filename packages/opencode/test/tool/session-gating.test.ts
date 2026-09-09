@@ -59,4 +59,50 @@ describe("ToolRegistry.tools: session tool orchestrator gating", () => {
       }),
     ),
   )
+
+  // Scaffold's `prime` role is a config-defined `mode: "all"` agent (no native
+  // entry) that legitimately coordinates peer-spawned reviewers via `session`
+  // create+cwd (peer+worktree isolation, imperative-weaving-wand.md Часть 54).
+  // Pinned by NAME alongside orchestrator, same as the gate itself.
+  it.live("config-defined agent named 'prime' sees the session tool", () =>
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          const reg = yield* ToolRegistry.Service
+          const agents = yield* Agent.Service
+          const prime = yield* agents.get("prime")
+          if (!prime) throw new Error("no prime agent")
+          const tools = yield* reg.tools({
+            providerID: ProviderID.opencode,
+            modelID: ModelID.make("opencode/claude-sonnet-4-6"),
+            agent: prime,
+          })
+          expect(tools.map((t) => t.id)).toContain("session")
+        }),
+      { config: { agent: { prime: { description: "Scaffold strategic driver" } } } },
+    ),
+  )
+
+  // НЕГАТИВ: имя решает, не mode — агент с mode:"all" под ДРУГИМ именем
+  // по-прежнему не видит session. Иначе гейт был бы неотличим от «любой
+  // full-capability агент», а не от явного allowlist по имени.
+  it.live("config-defined mode:'all' agent NOT named prime/orchestrator does NOT see session", () =>
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          const reg = yield* ToolRegistry.Service
+          const agents = yield* Agent.Service
+          const other = yield* agents.get("some_other_full_agent")
+          if (!other) throw new Error("no custom agent")
+          expect(other.mode).toBe("all")
+          const tools = yield* reg.tools({
+            providerID: ProviderID.opencode,
+            modelID: ModelID.make("opencode/claude-sonnet-4-6"),
+            agent: other,
+          })
+          expect(tools.map((t) => t.id)).not.toContain("session")
+        }),
+      { config: { agent: { some_other_full_agent: { description: "not prime" } } } },
+    ),
+  )
 })
